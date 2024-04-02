@@ -1,0 +1,346 @@
+{
+    "name": "Identity Fusion",
+    "commands": [
+        "std:test-connection",
+        "std:account:list",
+        "std:account:read",
+        "std:account:enable",
+        "std:account:disable",
+        "std:account:create",
+        "std:account:discover-schema",
+        "std:entitlement:list"
+    ],
+    "supportsCustomSchemas": true,
+    "showDebugLoggingOption": true,
+    "sourceConfigInitialValues": {
+        "uid_digits": 1,
+        "uid_template": "#set($initial = $firstname.substring(0, 1))$initial$lastname$counter",
+        "merging_expirationDays": 5
+    },
+    "sourceConfig": [
+        {
+            "type": "menu",
+            "label": "Configuration",
+            "items": [
+                {
+                    "type": "section",
+                    "sectionTitle": "Identity Security Cloud connection configuration",
+                    "sectionHelpMessage": "Configuration details for Identity Security Cloud Tenant",
+                    "items": [
+                        {
+                            "key": "baseurl",
+                            "label": "IdentityNow API URL",
+                            "type": "url",
+                            "required": true
+                        },
+                        {
+                            "key": "clientId",
+                            "label": "Personal Access Token ID",
+                            "type": "text",
+                            "required": true
+                        },
+                        {
+                            "key": "clientSecret",
+                            "label": "Personal Access Token secret",
+                            "type": "secret",
+                            "required": true
+                        }
+                    ]
+                },
+                {
+                    "type": "section",
+                    "sectionTitle": "Base configuration",
+                    "sectionHelpMessage": "Add your base configuration details here",
+                    "items": [
+                        {
+                            "key": "sources",
+                            "label": "List of account sources to read from",
+                            "type": "list",
+                            "required": true
+                        },
+                        {
+                            "key": "attributeMerge",
+                            "label": "Default attribute merge from multiple sources",
+                            "type": "radio",
+                            "required": true,
+                            "options": [
+                                {
+                                    "label": "First found",
+                                    "value": "first"
+                                },
+                                {
+                                    "label": "Make multi-valued entitlement",
+                                    "value": "multi"
+                                },
+                                {
+                                    "label": "Concatenate values",
+                                    "value": "concatenate"
+                                }
+                            ]
+                        },
+                        {
+                            "key": "includeExisting",
+                            "label": "Include existing identities?",
+                            "type": "checkbox",
+                            "required": false
+                        },
+                        {
+                            "key": "deleteEmpty",
+                            "label": "Delete accounts with no authoritative accounts left?",
+                            "type": "checkbox",
+                            "required": false
+                        },
+                        {
+                            "key": "reset",
+                            "label": "Reset accounts?",
+                            "type": "checkbox",
+                            "required": false
+                        }
+                    ]
+                },
+                {
+                    "type": "section",
+                    "sectionTitle": "Unique ID configuration",
+                    "sectionHelpMessage": "Configure how your identity IDs are generated",
+                    "items": [
+                        {
+                            "key": "uid_scope",
+                            "label": "Unique ID scope",
+                            "type": "radio",
+                            "required": true,
+                            "options": [
+                                {
+                                    "label": "Source",
+                                    "value": "source"
+                                },
+                                {
+                                    "label": "Platform",
+                                    "value": "platform"
+                                }
+                            ]
+                        },
+                        {
+                            "key": "uid_template",
+                            "label": "Apache Velocity template",
+                            "type": "text",
+                            "required": true
+                        },
+                        {
+                            "key": "uid_normalize",
+                            "label": "Normalize special characters?",
+                            "type": "checkbox"
+                        },
+                        {
+                            "key": "uid_spaces",
+                            "label": "Remove spaces?",
+                            "type": "checkbox"
+                        },
+                        {
+                            "key": "uid_digits",
+                            "label": "Minimum counter digits",
+                            "type": "number",
+                            "required": true
+                        },
+                        {
+                            "key": "uid_case",
+                            "label": "Case selection",
+                            "type": "radio",
+                            "required": true,
+                            "options": [
+                                {
+                                    "label": "Do not change",
+                                    "value": "same"
+                                },
+                                {
+                                    "label": "Lower case",
+                                    "value": "lower"
+                                },
+                                {
+                                    "label": "Upper case",
+                                    "value": "upper"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "section",
+                    "sectionTitle": "Deduplication configuration",
+                    "sectionHelpMessage": "Add your deduplication configuration details here",
+                    "items": [
+                        {
+                            "key": "merging_attributes",
+                            "label": "List of identity attributes to include in form",
+                            "type": "list",
+                            "required": false
+                        },
+                        {
+                            "key": "merging_reviewer",
+                            "label": "Manual reviewer identity or governance group",
+                            "type": "text",
+                            "required": false
+                        },
+                        {
+                            "key": "merging_expirationDays",
+                            "label": "Manual review expiration days",
+                            "type": "number",
+                            "required": false
+                        },
+                        {
+                            "key": "merging_score",
+                            "label": "Minimum similarity score [0-100] (LIG3 similarity function * 100 from Levenshtein distance)",
+                            "type": "number",
+                            "required": false
+                        },
+                        {
+                            "key": "merging_map",
+                            "label": "Identity to account attribute mapping",
+                            "titleKey": "identity",
+                            "subtitleKey": "account",
+                            "dragNDropEnabled": true,
+                            "deleteButton": true,
+                            "editButton": true,
+                            "addButton": true,
+                            "copyButton": true,
+                            "buttonLabel": "Add attribute mapping",
+                            "type": "cardList",
+                            "subMenus": [
+                                {
+                                    "label": "Attribute map configuration",
+                                    "items": [
+                                        {
+                                            "key": "identity",
+                                            "label": "Identity attribute",
+                                            "type": "text",
+                                            "required": true,
+                                            "helpKey": "Technical name of the identity attribute to compare with"
+                                        },
+                                        {
+                                            "key": "account",
+                                            "label": "Account attributes",
+                                            "type": "list",
+                                            "required": true,
+                                            "helpKey": "List of account attributes to compare with"
+                                        },
+                                        {
+                                            "key": "uidOnly",
+                                            "label": "Use mapping for unique ID generation only",
+                                            "type": "checkbox",
+                                            "required": false,
+                                            "helpKey": "When checked, this mapping is not used for deduplication but only for unique ID generation"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "label": "Attribute merge configuration",
+                                    "items": [
+                                        {
+                                            "key": "attributeMerge",
+                                            "label": "Attribute merge from multiple sources",
+                                            "type": "radio",
+                                            "required": false,
+                                            "options": [
+                                                {
+                                                    "label": "First found",
+                                                    "value": "first"
+                                                },
+                                                {
+                                                    "label": "Make multi-valued entitlement",
+                                                    "value": "multi"
+                                                },
+                                                {
+                                                    "label": "Concatenate values",
+                                                    "value": "concatenate"
+                                                },
+                                                {
+                                                    "label": "Source",
+                                                    "value": "source"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "key": "source",
+                                            "label": "Source name",
+                                            "type": "text",
+                                            "parentKey": "attributeMerge",
+                                            "parentValue": "source",
+                                            "required": true,
+                                            "helpKey": "Technical name of the identity attribute to compare with"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "accountSchema": {
+        "displayAttribute": "uuid",
+        "identityAttribute": "uuid",
+        "groupAttribute": "status",
+        "attributes": [
+            {
+                "name": "id",
+                "description": "Unique ID",
+                "type": "string",
+                "required": true
+            },
+            {
+                "name": "uuid",
+                "description": "UUID",
+                "type": "string",
+                "required": true
+            },
+            {
+                "name": "history",
+                "description": "History",
+                "type": "string",
+                "multi": true
+            },
+            {
+                "name": "status",
+                "description": "Status",
+                "type": "string",
+                "multi": true,
+                "entitlement": true,
+                "managed": false,
+                "schemaObjectType": "status"
+            },
+            {
+                "name": "accounts",
+                "description": "Account IDs",
+                "type": "string",
+                "multi": true,
+                "entitlement": false
+            },
+            {
+                "name": "reviews",
+                "description": "Reviews",
+                "type": "string",
+                "multi": true,
+                "entitlement": false
+            }
+        ]
+    },
+    "entitlementSchemas": [
+        {
+            "type": "status",
+            "identityAttribute": "name",
+            "displayAttribute": "name",
+            "attributes": [
+                {
+                    "name": "name",
+                    "type": "string",
+                    "description": "name"
+                },
+                {
+                    "name": "description",
+                    "type": "string",
+                    "description": "description"
+                }
+            ]
+        }
+    ]
+}

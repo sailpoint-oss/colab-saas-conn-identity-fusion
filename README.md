@@ -31,24 +31,30 @@ ISC doesn’t have a built-in mechanism to generate unique identifiers based on 
 This connector aims to simplify that by adding the typical string manipulation options readily available as configuration options. The identifier template is based on Velocity for flexibility and standardization, including the placement of the disambiguation counter.
 
 ![Unique identifier configuration options](assets/images/unique-id-configuration.png)
+<p align=center>Unique identifier configuration options</p>
 
 In addition to the template-based unique identifier, the connector assigns an immutable UUID to the account. This identifier can be synchronised to all identity’s accounts, like deduplicated accounts, in order to identify them as part of the same identity. Also, it supports the re-evaluation process of the template-based unique identifier, which could be needed when unfrequent changes happen, like a surname change, that makes the previous value unsuitable.
 
-![Simple process to re-evaluate unique identifier](assets/images/Identity%20Fusion%20-%20Unique%20identifier%20change.mp4)
+<video src="assets/images/Identity%20Fusion%20-%20Unique%20identifier%20change.mp4" controls></video>
+<p align=center>Simple process to re-evaluate unique identifier</p>
 
 Another frequent challenge is the deduplication of identities. When identity data comes from multiple sources, chances are data is not 100% accurate and our typical correlation process, based on an identical match on various attributes, could fail and generate duplicated identities. This is very problematic and it requires manual intervention for manual correlation or identity data correction, when possible. The connector helps with this process by submitting new accounts to a manual review based on a similarity check. If the account is considered similar to one or more identities, a form is sent to the configured reviewers. They can decide whether it’s a new identity or it’s part of a similar identity. Other accounts are simply processed and generate a new identity, since there was no match and the connector’s source is authoritative. As an added bonus, conventional correlation can still be used from the original account sources, which makes the process very flexible.
 
 ![Deduplication configuration](assets/images/deduplication-configuration.png)
+<p align=center>Deduplication configuration</p>
 
 Both features can be used hand by hand or separately. Unique identifier generation can be used without deduplication, as an authoritative source or not. When using deduplication, the connector’s source must be configured as an authoritative source as it needs to control the inflow of accounts. The connector generates proxy accounts which are the result of merging accounts from multiple sources. Since sources may present different account schemas, the connector can discover the account schema as the result of combining the configured sources' schemas. Account merging configuration controls how account attributes map to identity attributes, for comparison, and how to deal with accounts contributing to the same attribute.
 
 ![Base configuration](assets/images/base-configuration.png)
+<p align=center>Base configuration</p>
 
 In the process of checking identity duplicates, account data merging and normalization must happen. First off, we’re comparing new accounts to existing identities, so we need to map which account attributes map to which identity attributes. This results in having a combined schema from all configured sources in addition to  a series of normalised attributes. When multiple source accounts contribute to a proxy account, multiple values for the same attribute may be present. The connector allows to keep all values or just one. Keeping all values for an attribute greatly helps in use cases where multiple accounts can contribute to an identity attribute, like multiple job descriptions for the same person, that can be used for role assignments or searches.
 
 ![Configuration can be general or per attribute](assets/images/attribute-configuration.png)
+<p align=center>Configuration can be general or per attribute</p>
 
 ![The result is both values concatenated with square brackets](assets/images/attribute-merging.png)
+<p align=center>The result is both values concatenated with square brackets</p>
 
 ## How does the connector work?
 The connector can be configured in two different modes:
@@ -80,16 +86,20 @@ In both cases, proxy accounts are generated based on sources configured and othe
 - **reviews**: list of pending form instances a reviewer must attend to.
 
 ![Account attributes](assets/images/account-attributes.png)
+<p align=center>Account attributes</p>
 
 The connector main processing happens on account aggregation. The aggregation context prevents having race conditions when creating the identifiers. The connector reads previously aggregated accounts and compares the current list to the existing source accounts to detect accounts not processed yet. It is also important to note that each run starts by processing completed form instances generated by previous runs, since these decisions may create a new account or update an existing one. On each run, proxy accounts are updated with deduplication actions data and new source account data.
 
 When a potential match is found, based on an attribute similarity check, the connector generates form instances for reviewers to check. The first reviewer to complete the form decides what to do with that account: create a new one or link it to an existing identity.
 
 ![Email is sent to reviewer](assets/images/email.png)
+<p align=center>Email is sent to reviewer</p>
 
 ![Deduplication form](assets/images/form.png)
+<p align=center>Deduplication form</p>
 
 ![New account is correlated and history updated accordingly](assets/images/new-account.png)
+<p align=center>New account is correlated and history updated accordingly</p>
 
 When running account aggregation for the first time, an account baseline must be created. This doesn’t affect the creation of unique identifiers, which are always unique regardless of the batch they were created on. However, for deduplication, we must have a set of identities to compare to. That’s the baseline, and it’s meant to be created out of a curated list of accounts. More sources can be later added to the configuration and they’ll be compared to that baseline.
 
@@ -100,6 +110,7 @@ Account disable triggers template-based unique identifier re-evaluation. The acc
 Entitlement aggregation just populates all different statuses with descriptions.
 
 ![Entitlements are simply tags for accounts](assets/images/entitlements.png)
+<p align=center>Entitlements are simply tags for accounts</p>
 
 The connector supports discovering the schema. The schema is built by merging the configured sources’s schemas, normalised attributes as per configuration and some predefined attributes. Depending on the attribute merge configuration, some attributes may be returned as multi-valued entitlements. When changing attribute merge settings that may result in multi-valued attributes changes after the first discovery, please review your schema and change it accordingly, since ISC doesn’t. It’s also worth noting that optional schema attributes can be removed to prevent undesired data to be fetched.
 

@@ -12,8 +12,8 @@
 [contributor-shield]:https://img.shields.io/github/contributors/sailpoint-oss/repo-template?label=Contributors
 [contributors-url]:https://github.com/sailpoint-oss/repo-template/graphs/contributors
 
-# Identity Fusion
-[Explore the docs »](https://developer.sailpoint.com/discuss/t/identity-fusion-saas-connector/38746/3)
+# Identity Fusion SaaS Connector
+[Explore the docs »](https://developer.sailpoint.com/discuss/t/identity-fusion-connector/38793)
 
 [New to the CoLab? Click here »](https://developer.sailpoint.com/discuss/t/about-the-sailpoint-developer-community-colab/11230)
 

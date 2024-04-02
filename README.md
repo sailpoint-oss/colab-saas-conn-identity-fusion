@@ -24,7 +24,7 @@ This is a concept custom SaaS connector with two main goals in mind:
 
 - Helping with the deduplication process of identities from multiple sources
 
-These two items are a recurring theme in POCs and of special importance in particular contexts. like education.
+These two items are a recurring theme in POCs and of special importance in particular contexts like education.
 
 ISC doesn’t have a built-in mechanism to generate unique identifiers based on a template with value collision handling. There is an account attribute rule that does this but it’s not applicable to identities. In combination with transforms, this has been traditionally used to generate such unique identifiers by provisioning an account to a transactional target system, like a database. This approach, while valid, requires an external system to maintain. Also, creating the initial value is often a cumbersome process that involves deeply nested transforms to normalize strings, remove spaces, trim values, change case, etc.
 
@@ -63,13 +63,13 @@ The connector can be configured in two different modes:
 
 - **Regular source**: when only generation of unique identifiers is needed, the connector can be configured as a regular source and the identifiers used on those identity profiles linked to sources included in the configuration. When using this mode, it’s necessary to ensure that:
 
- - All sources for the identity profiles we want to generate unique identifiers for are included in the list.
+    - All sources for the identity profiles we want to generate unique identifiers for are included in the list.
 
- - Include existing identities is enabled.
+    - Include existing identities is enabled.
 
- - Unique ID scope is set to source.
+    - Unique ID scope is set to source.
 
- - The attributes used in the Velocity template exist in the account schema or they’re a mapped identity attribute.
+    - The attributes used in the Velocity template exist in the account schema or they’re a mapped identity attribute.
 
 In both cases, proxy accounts are generated based on sources configured and other configuration options. Proxy accounts are simply the result of putting together all source accounts attributes, normalised attributes as per configuration and a set of mandatory attributes as described below:
 
@@ -130,11 +130,11 @@ The connector supports discovering the schema. The schema is built by merging th
 
 - **Default attribute merge from multiple sources**
 
- - **First found**: use first value found for account, based on the source order set above, to populate attribute.
+    - **First found**: use first value found for account, based on the source order set above, to populate attribute.
 
- - **Make multi-valued entitlement**: create a list of unique values from all accounts contributing to the attribute.
+    - **Make multi-valued entitlement**: create a list of unique values from all accounts contributing to the attribute.
 
- - **Concatenate values**: create a concatenated string of unique values, enclosed in square brackets, from all accounts contributing to the attribute.
+    - **Concatenate values**: create a concatenated string of unique values, enclosed in square brackets, from all accounts contributing to the attribute.
 
 - **Include existing identities?**: whether to include existing identities from the source list. When not included, correlated accounts from the source list are ignored. When included, they’re processed too but the identity’s uid is considered its unique ID.
 
@@ -146,9 +146,9 @@ The connector supports discovering the schema. The schema is built by merging th
 
 - **Unique ID scope**
 
- - **Source**: only consider source accounts when calculating unique identifiers.
+    - **Source**: only consider source accounts when calculating unique identifiers.
 
- - **Platform**: consider both source accounts IDs and all identities UIDs when calculating unique identifiers.
+    - **Platform**: consider both source accounts IDs and all identities UIDs when calculating unique identifiers.
 
 - **Apache Velocity template**: template to generate unique identifiers. Apache Velocity context is based on the account attributes. It is best to use normalised attributes, defined in the next section.
 
@@ -158,11 +158,11 @@ The connector supports discovering the schema. The schema is built by merging th
 
 - **Case selection**
 
- - **Do not change**: do nothing.
+    - **Do not change**: do nothing.
 
- - **Lower case**: change string to lower case.
+    - **Lower case**: change string to lower case.
 
- - **Upper case**: change string to upper case.
+    - **Upper case**: change string to upper case.
 
 ![Deduplication configuration](assets/images/deduplication-configuration2.png)
 
@@ -200,9 +200,7 @@ Correlation configuration depends on the situation:
 
 - *Regular source*: in order for the proxy accounts to directly correlate to the corresponding identities, we need to identify those account attributes we can match with identity attributes. This configuration depends on the actual data and it’s no different to any other source account correlation.
 
-### Account aggregation process diagram
-
-<iframe width="768" height="432" src="https://miro.com/app/live-embed/uXjVNgEpRGs=/?moveToViewport=-908,-508,1953,1254&embedId=143980806927" frameborder="0" scrolling="no" allow="fullscreen; clipboard-read; clipboard-write" allowfullscreen></iframe>
+### [Account aggregation process diagram](https://miro.com/app/board/uXjVNgEpRGs=/)
 
 <!-- CONTRIBUTING -->
 ## Contributing

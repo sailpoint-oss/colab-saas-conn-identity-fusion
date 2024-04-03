@@ -182,7 +182,6 @@ export const connector = async () => {
                     const uniqueAccount = await ctx.buildUniqueAccount(correlatedAccount, 'baseline', message)
                 } catch (e) {
                     ctx.handleError(e)
-                    clearInterval(interval)
                 }
             }
             pendingAccounts = pendingAccounts.filter((x) => x.uncorrelated === true)
@@ -198,7 +197,6 @@ export const connector = async () => {
                     const uniqueAccount = await ctx.buildUniqueAccount(uncorrelatedAccount, 'baseline', message)
                 } catch (e) {
                     ctx.handleError(e)
-                    clearInterval(interval)
                 }
             }
             pendingAccounts = []
@@ -224,7 +222,6 @@ export const connector = async () => {
                 }
             } catch (e) {
                 ctx.handleError(e)
-                clearInterval(interval)
             }
         }
 
@@ -288,7 +285,6 @@ export const connector = async () => {
                     }
                 } catch (e) {
                     ctx.handleError(e)
-                    clearInterval(interval)
                 }
             }
         }

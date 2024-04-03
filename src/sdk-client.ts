@@ -30,8 +30,7 @@ import {
     IdentitiesBetaApi,
     WorkgroupDtoBeta,
     GovernanceGroupsBetaApi,
-    GovernanceGroupsV2Api,
-    ListWorkgroupMembers200ResponseInnerV2,
+    ListWorkgroupMembers200ResponseInnerBeta,
 } from 'sailpoint-api-client'
 import { AxiosRequestConfig } from 'axios'
 import {
@@ -51,8 +50,6 @@ const TOKEN_URL_PATH = '/oauth/token'
 function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms))
 }
-
-// type API = BaseAPIV3 | BaseAPIBeta | BaseAPIV2 | BaseAPICC
 
 export class SDKClient {
     private config: Configuration
@@ -84,20 +81,6 @@ export class SDKClient {
         // }
     }
 
-    // async *paginate(api: API, fnc: (this: any, args: PaginationParams) => Promise<AxiosResponse>) {
-    //     const response = await Paginator.paginate(api, fnc, undefined, this.batchSize)
-    //     for (const item of response.data) {
-    //         yield item
-    //     }
-    // }
-
-    // async *paginateSearch(api: SearchApi, fnc: Search) {
-    //     const response = await Paginator.paginateSearchApi(api, fnc, undefined, this.batchSize)
-    //     for (const item of response.data) {
-    //         yield item
-    //     }
-    // }
-
     async listIdentities(): Promise<IdentityDocument[]> {
         const api = new SearchApi(this.config)
         const search: Search = {
@@ -110,7 +93,7 @@ export class SDKClient {
         }
 
         const response = await Paginator.paginateSearchApi(api, search)
-        return response.data
+        return response.data as IdentityDocument[]
     }
 
     async getIdentityByUID(uid: string): Promise<IdentityBeta | undefined> {
@@ -140,7 +123,7 @@ export class SDKClient {
 
         const response = await api.searchPost({ search })
 
-        return response.data
+        return response.data as IdentityDocument[]
     }
 
     async getIdentityBySearch(id: string): Promise<IdentityDocument | undefined> {
@@ -155,7 +138,7 @@ export class SDKClient {
 
         const response = await api.searchPost({ search })
 
-        return response.data[0]
+        return response.data[0] as IdentityDocument | undefined
     }
 
     async getIdentity(id: string): Promise<IdentityBeta | undefined> {
@@ -338,8 +321,8 @@ export class SDKClient {
         return response.data
     }
 
-    async listWorkgroupMembers(workgroupId: string): Promise<ListWorkgroupMembers200ResponseInnerV2[]> {
-        const api = new GovernanceGroupsV2Api(this.config)
+    async listWorkgroupMembers(workgroupId: string): Promise<ListWorkgroupMembers200ResponseInnerBeta[]> {
+        const api = new GovernanceGroupsBetaApi(this.config)
         const response = await api.listWorkgroupMembers({ workgroupId })
 
         return response.data

@@ -7,7 +7,7 @@ import {
     FormInstanceResponseBeta,
     IdentityBeta,
     IdentityDocument,
-    Owner,
+    OwnerDto,
     Schema,
     Source,
     WorkflowBeta,
@@ -158,7 +158,7 @@ export const handleError = (error: any, errors: string[]) => {
 }
 
 //================ SOURCES ================
-export const getOwnerFromSource = (source: Source): Owner => {
+export const getOwnerFromSource = (source: Source): OwnerDto => {
     return {
         type: 'IDENTITY',
         id: source.owner.id,
@@ -215,7 +215,7 @@ export const getReviewerIDs = async (client: SDKClient, reviewer?: string): Prom
             if (workgroup) {
                 logger.debug(lm('Workgroup found', c, 1))
                 const members = await client.listWorkgroupMembers(workgroup.id!)
-                reviewers = members.map((x) => x.externalId!)
+                reviewers = members.map((x) => x.id!)
             }
         }
 
@@ -515,7 +515,7 @@ export const buildIdentityAttributesObject = (
 export const getEmailWorkflow = async (
     client: SDKClient,
     name: string,
-    owner: Owner
+    owner: OwnerDto
 ): Promise<WorkflowBeta | undefined> => {
     const c = 'getEmailWorkflow'
     logger.debug(lm('Fetching workflows', c, 1))

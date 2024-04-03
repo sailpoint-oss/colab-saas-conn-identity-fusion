@@ -16,7 +16,7 @@ import { Email } from './model/email'
 import { datedMessage, getAccountFromIdentity, getFormValue, opLog } from './utils'
 
 import { ContextHelper } from './contextHelper'
-import { IDENTITYNOTFOUNDWAIT } from './constants'
+import { PROCESSINGWAIT } from './constants'
 import { Config } from './model/config'
 import { statuses } from './data/status'
 import { Status } from './model/status'
@@ -67,6 +67,11 @@ export const connector = async () => {
         await opLog(config, input)
 
         if (config.reset) return
+
+        //Keepalive
+        const interval = setInterval(() => {
+            res.keepAlive()
+        }, PROCESSINGWAIT)
 
         //Compiling info
         logger.info('Loading data.')
@@ -177,6 +182,7 @@ export const connector = async () => {
                     const uniqueAccount = await ctx.buildUniqueAccount(correlatedAccount, 'baseline', message)
                 } catch (e) {
                     ctx.handleError(e)
+                    clearInterval(interval)
                 }
             }
             pendingAccounts = pendingAccounts.filter((x) => x.uncorrelated === true)
@@ -192,6 +198,7 @@ export const connector = async () => {
                     const uniqueAccount = await ctx.buildUniqueAccount(uncorrelatedAccount, 'baseline', message)
                 } catch (e) {
                     ctx.handleError(e)
+                    clearInterval(interval)
                 }
             }
             pendingAccounts = []
@@ -217,6 +224,7 @@ export const connector = async () => {
                 }
             } catch (e) {
                 ctx.handleError(e)
+                clearInterval(interval)
             }
         }
 
@@ -280,12 +288,14 @@ export const connector = async () => {
                     }
                 } catch (e) {
                     ctx.handleError(e)
+                    clearInterval(interval)
                 }
             }
         }
 
         //BUILD RESULTING ACCOUNTS
         logger.info('Building accounts.')
+
         const accounts = await ctx.getUniqueAccounts()
 
         logger.info('Sending accounts.')
@@ -295,6 +305,8 @@ export const connector = async () => {
         }
 
         ctx.logErrors(context, input)
+
+        clearInterval(interval)
     }
 
     const stdAccountRead: StdAccountReadHandler = async (context, input, res) => {
@@ -327,9 +339,10 @@ export const connector = async () => {
             ctx.schema = input.schema
         }
 
+        //Keepalive
         const interval = setInterval(() => {
             res.keepAlive()
-        }, IDENTITYNOTFOUNDWAIT)
+        }, PROCESSINGWAIT)
 
         const account = ctx.buildUniqueAccountFromID(input.identity)
         account
@@ -359,9 +372,10 @@ export const connector = async () => {
             ctx.schema = input.schema
         }
 
+        //Keepalive
         const interval = setInterval(() => {
             res.keepAlive()
-        }, IDENTITYNOTFOUNDWAIT)
+        }, PROCESSINGWAIT)
 
         fetchUniqueIDs(config)
         const uniqueID = await ctx.buildUniqueID(input.identity)

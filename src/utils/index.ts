@@ -176,7 +176,7 @@ export const getCurrentSource = async (client: SDKClient, id: string): Promise<S
 }
 
 //================ IDENTITIES ================
-export const getAccountFromIdentity = (identity: IdentityDocument, sourceID: string): BaseAccount | undefined => {
+export const getAccountByIdentity = (identity: IdentityDocument, sourceID: string): BaseAccount | undefined => {
     return identity.accounts!.find((x) => x.source!.id === sourceID)
 }
 
@@ -198,32 +198,58 @@ export const getIdentities = async (
     return { identities, processedIdentities, unprocessedIdentities }
 }
 
-export const getReviewerIDs = async (client: SDKClient, reviewer?: string): Promise<string[]> => {
-    const c = 'getReviewerIDs'
-    logger.debug(lm(`Fetching reviewer ${reviewer}`, c, 1))
+export const buildReviewersMap = async (
+    client: SDKClient,
+    config: Config,
+    currentSource: Source,
+    sources: Source[]
+): Promise<Map<string, string[]>> => {
+    const reviewersMap = new Map<string, string[]>()
+    let defaultReviewerIDs: string[] = []
+    if (config.merging_reviewerIsSourceOwner) {
+        defaultReviewerIDs = await getReviewerIDs(client, currentSource)
+    }
 
-    if (reviewer) {
-        const reviewerIdentity = await client.getIdentityByUID(reviewer)
-        let reviewers: string[] = []
+    for (const source of sources) {
+        if (config.merging_reviewerIsSourceOwner) {
+            const reviewerIDs = await getReviewerIDs(client, source)
+            reviewersMap.set(source.name, reviewerIDs)
+        } else {
+            reviewersMap.set(source.name, defaultReviewerIDs)
+        }
+    }
+
+    return reviewersMap
+}
+
+export const getReviewerIDs = async (client: SDKClient, source: Source): Promise<string[]> => {
+    const c = 'getReviewerIDs'
+    logger.debug(lm(`Fetching reviewers for ${source.name}`, c, 1))
+    let reviewers: string[] = []
+
+    if (source.managementWorkgroup) {
+        logger.debug(lm(`Reviewer is ${source.managementWorkgroup.name} workgroup`, c, 1))
+        const workgroups = await client.listWorkgroups()
+        const workgroup = workgroups.find((x) => x.id === source.managementWorkgroup!.id)
+        if (workgroup) {
+            logger.debug(lm('Workgroup found', c, 1))
+            const members = await client.listWorkgroupMembers(workgroup.id!)
+            reviewers = members.map((x) => x.id!)
+        }
+    } else if (source.owner || reviewers.length === 0) {
+        logger.debug(lm('Reviewer is the owner', c, 1))
+        const reviewerIdentity = await client.getIdentityByUID(source.owner.name!)
         if (reviewerIdentity) {
             logger.debug(lm('Reviewer found', c, 1))
             reviewers.push(reviewerIdentity.id!)
         } else {
-            logger.debug(lm('Reviewer is likely a workgroup', c, 1))
-            const workgroups = await client.listWorkgroups()
-            const workgroup = workgroups.find((x) => x.name === reviewer)
-            if (workgroup) {
-                logger.debug(lm('Workgroup found', c, 1))
-                const members = await client.listWorkgroupMembers(workgroup.id!)
-                reviewers = members.map((x) => x.id!)
-            }
+            logger.error(lm(`Reviewer not found ${source.owner.name}`, c, 1))
         }
-
-        return reviewers
     } else {
         logger.warn(lm(`No reviewer provided. Merging forms will not be processed.`, c, 1))
-        return []
     }
+
+    return reviewers
 }
 
 //================ ACCOUNTS ================
@@ -235,8 +261,7 @@ export const updateAccountLinks = (account: Account, identities: IdentityDocumen
             ?.filter((x) => sourceNames.includes(x.source!.name!))
             .map((x) => x.id as string)
         // Removing previously existing authoritative accounts and leaving only existing ones
-        account.attributes.accounts = correlatedAccounts
-        // account.attributes.accounts = combineArrays(correlatedAccounts, account.attributes.accounts || [])
+        account.attributes.accounts = combineArrays(correlatedAccounts, account.attributes.accounts)
     }
 }
 
@@ -246,7 +271,7 @@ export const processUncorrelatedAccount = async (
     currentIdentities: IdentityDocument[],
     source: Source,
     config: Config,
-    deduplicate: boolean
+    merge: boolean
 ): Promise<{ processedAccount: Account | undefined; uniqueForm: UniqueForm | undefined }> => {
     // Check if identical match exists
     const c = 'processUncorrelatedAccount'
@@ -269,7 +294,7 @@ export const processUncorrelatedAccount = async (
             identity: IdentityDocument
             score: string
         }[] = []
-        if (deduplicate) {
+        if (merge) {
             logger.debug(
                 lm(`Checking similar matches for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id})`, c, 1)
             )
@@ -277,7 +302,7 @@ export const processUncorrelatedAccount = async (
                 uncorrelatedAccount,
                 currentIdentities,
                 config.merging_map,
-                config.merging_score
+                config.merging_score!
             )
         }
 
@@ -315,7 +340,7 @@ export const refreshAccount = async (
 ): Promise<UniqueAccount> => {
     const c = 'refreshAccount'
 
-    logger.debug(lm(`Refreshing ${account.attributes.id} account`, c, 1))
+    logger.debug(lm(`Refreshing ${account.attributes.uniqueID} account`, c, 1))
     const attributes = account.attributes
 
     for (const attrDef of schema.attributes) {
@@ -442,7 +467,7 @@ export const normalizeAccountAttributes = (
         account: string[]
         identity: string
         uidOnly: boolean
-        source: string | undefined
+        source?: string
     }[]
 ): Account => {
     const normalizedAccount = { ...account }
@@ -609,6 +634,15 @@ export const getFormValue = (form: FormDefinitionResponseBeta, input: string): s
     return form.formInput?.find((x) => x.id === input)?.description!
 }
 
+export const buildReviewFromFormInstance = (instance: FormInstanceResponseBeta): string => {
+    const account = (instance.formInput!.name as any).value
+    const source = (instance.formInput!.source as any).value
+    const url = instance.standAloneFormUrl
+    const review = `${account} (${source}): [${url}]`
+
+    return review
+}
+
 //================ SCHEMAS ================
 export const buildDynamicSchema = async (
     sources: Source[],
@@ -633,7 +667,7 @@ export const buildDynamicSchema = async (
     logger.debug(lm('Defining static attributes.', c, 1))
     const attributes: SchemaAttribute[] = [
         {
-            name: 'id',
+            name: 'uniqueID',
             description: 'Unique ID',
             type: 'string',
             required: true,

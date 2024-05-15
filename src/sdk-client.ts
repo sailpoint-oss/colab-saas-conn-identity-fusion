@@ -58,7 +58,7 @@ export class SDKClient {
         const tokenUrl = new URL(config.baseurl).origin + TOKEN_URL_PATH
         this.config = new Configuration({ ...config, tokenUrl })
         this.config.retriesConfig = {
-            retries: 10,
+            retries: 5,
             // retryDelay: (retryCount) => { return retryCount * 2000; },
             retryDelay: (retryCount, error) => axiosRetry.exponentialDelay(retryCount, error, 2000),
             retryCondition: (error) => {
@@ -70,15 +70,11 @@ export class SDKClient {
             },
             onRetry: (retryCount, error, requestConfig) => {
                 logger.debug(
-                    `Retrying API [${requestConfig.url}] due to request error: [${error}]. Try number [${retryCount}]`
+                    `Retrying API [${requestConfig.url}] due to request error: [${error}]. Retry number [${retryCount}]`
                 )
+                logger.error(error)
             },
         }
-        // this.config.retriesConfig = {
-        //     retries: 5,
-        //     retryDelay: axiosRetry.exponentialDelay,
-        //     retryCondition: axiosRetry.isRetryableError,
-        // }
     }
 
     async listIdentities(): Promise<IdentityDocument[]> {

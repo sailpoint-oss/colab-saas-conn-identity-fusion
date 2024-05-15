@@ -11,6 +11,7 @@ import { SDKClient } from './sdk-client'
 import { AccountSchema, Context, logger, readConfig } from '@sailpoint/connector-sdk'
 import {
     buildDynamicSchema,
+    buildReviewersMap,
     getEmailWorkflow,
     getExpirationDate,
     getFormName,
@@ -39,7 +40,7 @@ export class ContextHelper {
     private sources: Source[]
     private client?: SDKClient
     private config?: Config
-    private reviewerIDs: string[]
+    private reviewerIDs: Map<string, string[]>
     private source?: Source
     schema?: AccountSchema
     ids: string[]
@@ -56,17 +57,17 @@ export class ContextHelper {
         this.ids = []
         this.identities = []
         this.currentIdentities = []
-        this.reviewerIDs = []
         this.accounts = []
         this.authoritativeAccounts = []
         this.forms = []
         this.formInstances = []
         this.errors = []
+        this.reviewerIDs = new Map<string, string[]>()
     }
 
     async init(skipData?: boolean) {
         logger.debug(lm(`Reading config.`, this.c))
-        this.config = await readConfig()
+        this.config = (await readConfig()) as Config
         this.config!.merging_map = this.config?.merging_map || []
         logger.debug(lm(`Initializing SDK client.`, this.c))
         this.client = new SDKClient(this.config)
@@ -90,7 +91,7 @@ export class ContextHelper {
             throw new Error('Unable to instantiate email workflow')
         }
 
-        this.reviewerIDs = await getReviewerIDs(this.client, this.config?.merging_reviewer)
+        this.reviewerIDs = await buildReviewersMap(this.client, this.config, this.source, this.sources)
 
         if (!skipData) {
             this.identities = await this.getIdentities()
@@ -131,8 +132,21 @@ export class ContextHelper {
         return this.sources
     }
 
-    getReviewerIDs(): string[] {
-        return this.reviewerIDs
+    getReviewerIDs(source: string): string[] {
+        return this.reviewerIDs.get(source) || []
+    }
+
+    getAllReviewerIDs(): string[] {
+        const ids = Array.from(this.reviewerIDs.values()).flat()
+
+        return Array.from(new Set(ids))
+    }
+
+    deleteReviewerID(reviewerID: string, sourceName: string) {
+        const reviewers = this.reviewerIDs.get(sourceName)
+        if (reviewers) {
+            reviewers.splice(reviewers.indexOf(reviewerID), 1)
+        }
     }
 
     async getIdentities(): Promise<IdentityDocument[]> {
@@ -141,6 +155,10 @@ export class ContextHelper {
         const identities = await this.getClient().listIdentities()
 
         return identities ? identities : []
+    }
+
+    getIdentityById(id: string): IdentityDocument | undefined {
+        return this.identities.find((x) => x.id === id)
     }
 
     async loadIdentities() {
@@ -159,22 +177,22 @@ export class ContextHelper {
 
         logger.debug(lm('Updating existing account links.', c))
         for (const account of accounts) {
-            updateAccountLinks(account, this.identities, config.sources)
+            // updateAccountLinks(account, this.identities, config.sources)
             account.attributes.accounts = account.attributes.accounts || []
             account.attributes.status = account.attributes.status || []
             account.attributes.reviews = account.attributes.reviews || []
             account.attributes.history = account.attributes.history || []
         }
-        if (this.config?.deleteEmpty) {
-            accounts = accounts.filter(
-                (x) =>
-                    !(
-                        x.uncorrelated === false &&
-                        x.attributes.accounts.length === 0 &&
-                        !x.attributes.status.includes('reviewer')
-                    )
-            )
-        }
+        // if (this.config?.deleteEmpty) {
+        //     accounts = accounts.filter(
+        //         (x) =>
+        //             !(
+        //                 x.uncorrelated === false &&
+        //                 x.attributes.accounts.length === 0 &&
+        //                 !x.attributes.status.includes('reviewer')
+        //             )
+        //     )
+        // }
 
         return accounts
     }
@@ -185,6 +203,10 @@ export class ContextHelper {
         const account = await client.getAccount(id)
 
         return account
+    }
+
+    getIdentityAccount(identity: IdentityDocument) {
+        return this.accounts.find((x) => x.identityId === identity.id)
     }
 
     async getAuthoritativeAccounts(): Promise<Account[]> {
@@ -199,8 +221,25 @@ export class ContextHelper {
     }
 
     async getUniqueAccounts(): Promise<UniqueAccount[]> {
+        const c = 'getUniqueAccounts'
+        const config = await this.getConfig()
         const accounts: UniqueAccount[] = []
         const uuids: string[] = []
+
+        logger.debug(lm('Updating existing account links.', c))
+        for (const account of this.accounts) {
+            updateAccountLinks(account, this.identities, config.sources)
+        }
+        if (this.config?.deleteEmpty) {
+            this.accounts = this.accounts.filter(
+                (x) =>
+                    !(
+                        x.uncorrelated === false &&
+                        x.attributes.accounts.length === 0 &&
+                        !x.attributes.status.includes('reviewer')
+                    )
+            )
+        }
 
         for (const account of this.accounts) {
             while (!account.attributes.uuid) {
@@ -253,6 +292,27 @@ export class ContextHelper {
         return getFormName(this.getSource().name, account)
     }
 
+    getFormInstancesByForm(form: FormDefinitionResponseBeta): FormInstanceResponseBeta[] {
+        return this.formInstances.filter((x) => x.formDefinitionId === form.id)
+    }
+
+    getFormInstancesByReviewerID(reviewerID: string): FormInstanceResponseBeta[] {
+        return this.formInstances.filter((x) => x.recipients!.find((y) => y.id === reviewerID))
+    }
+
+    getFormByID(id: string): FormDefinitionResponseBeta | undefined {
+        return this.forms.find((x) => x.id === id)
+    }
+
+    getFormInstanceByReviewerID(
+        form: FormDefinitionResponseBeta,
+        reviewerID: string
+    ): FormInstanceResponseBeta | undefined {
+        return this.formInstances.find(
+            (x) => x.formDefinitionId === form.id && x.recipients!.find((y) => y.id === reviewerID)
+        )
+    }
+
     async getForms(): Promise<FormDefinitionResponseBeta[]> {
         const client = this.getClient()
 
@@ -275,7 +335,9 @@ export class ContextHelper {
         const client = this.getClient()
 
         await client.deleteForm(form.id!)
-        this.forms.splice(this.forms.indexOf(form), 1)
+
+        const index = this.forms.findIndex((x) => x.id === form.id!)
+        this.forms.splice(index, 1)
     }
 
     async getFormInstances(forms?: FormDefinitionResponseBeta[]): Promise<FormInstanceResponseBeta[]> {
@@ -324,12 +386,13 @@ export class ContextHelper {
         return currentFormInstance
     }
 
-    async isDeduplicationEnabled(): Promise<boolean> {
+    //TODO
+    async isMergingEnabled(): Promise<boolean> {
         const config = await this.getConfig()
         return (
-            this.reviewerIDs.length > 0 &&
-            config.merging_score !== undefined &&
-            config.merging_expirationDays !== undefined
+            config.merging_isEnabled && this.getAllReviewerIDs().length > 0
+            // config.merging_score !== undefined &&
+            // config.merging_expirationDays !== undefined
         )
     }
 
@@ -338,7 +401,7 @@ export class ContextHelper {
     ): Promise<{ processedAccount: Account | undefined; uniqueForm: UniqueForm | undefined }> {
         const config = await this.getConfig()
         const source = this.getSource()
-        const deduplicate = await this.isDeduplicationEnabled()
+        const deduplicate = await this.isMergingEnabled()
 
         const response = await processUncorrelatedAccount(
             uncorrelatedAccount,
@@ -356,7 +419,7 @@ export class ContextHelper {
         const config = await this.getConfig()
 
         const uniqueAccount = await buildUniqueAccount(account, status, msg, this.identities, this.ids, config)
-        this.ids.push(uniqueAccount.attributes.id)
+        this.ids.push(uniqueAccount.attributes.uniqueID)
         this.accounts.push(uniqueAccount)
 
         return uniqueAccount

@@ -15,7 +15,8 @@
     "sourceConfigInitialValues": {
         "uid_digits": 1,
         "uid_template": "#set($initial = $firstname.substring(0, 1))$initial$lastname$counter",
-        "merging_expirationDays": 5
+        "merging_expirationDays": 5,
+        "merging_isEnabled": true
     },
     "sourceConfig": [
         {
@@ -29,7 +30,7 @@
                     "items": [
                         {
                             "key": "baseurl",
-                            "label": "IdentityNow API URL",
+                            "label": "Identity Security Cloud API URL",
                             "type": "url",
                             "required": true
                         },
@@ -165,32 +166,46 @@
                 },
                 {
                     "type": "section",
-                    "sectionTitle": "Deduplication configuration",
-                    "sectionHelpMessage": "Add your deduplication configuration details here",
+                    "sectionTitle": "Merging/mapping configuration",
+                    "sectionHelpMessage": "Add your account merging and attribute mapping configuration details here",
                     "items": [
+                        {
+                            "key": "merging_isEnabled",
+                            "label": "Enable account merging?",
+                            "type": "checkbox",
+                            "required": false
+                        },
                         {
                             "key": "merging_attributes",
                             "label": "List of identity attributes to include in form",
+                            "parentKey": "merging_isEnabled",
+                            "parentValue": "true",
                             "type": "list",
                             "required": false
                         },
                         {
-                            "key": "merging_reviewer",
-                            "label": "Manual reviewer identity or governance group",
-                            "type": "text",
+                            "key": "merging_reviewerIsSourceOwner",
+                            "label": "Use each source's owner as reviewer?",
+                            "parentKey": "merging_isEnabled",
+                            "parentValue": "true",
+                            "type": "checkbox",
                             "required": false
                         },
                         {
                             "key": "merging_expirationDays",
                             "label": "Manual review expiration days",
+                            "parentKey": "merging_isEnabled",
+                            "parentValue": "true",
                             "type": "number",
-                            "required": false
+                            "required": true
                         },
                         {
                             "key": "merging_score",
                             "label": "Minimum similarity score [0-100] (LIG3 similarity function * 100 from Levenshtein distance)",
+                            "parentKey": "merging_isEnabled",
+                            "parentValue": "true",
                             "type": "number",
-                            "required": false
+                            "required": true
                         },
                         {
                             "key": "merging_map",
@@ -279,10 +294,9 @@
     "accountSchema": {
         "displayAttribute": "uuid",
         "identityAttribute": "uuid",
-        "groupAttribute": "status",
         "attributes": [
             {
-                "name": "id",
+                "name": "uniqueID",
                 "description": "Unique ID",
                 "type": "string",
                 "required": true

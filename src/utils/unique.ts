@@ -80,18 +80,18 @@ export const buildUniqueAccount = async (
     logger.debug(lm(`Processing ${account.name} (${account.id})`, c, 1))
     let uniqueID: string
 
-    if (config.uid_scope === 'source' && status !== 'reviewer') {
-        uniqueID = await buildUniqueID(account, currentIDs, config)
-    } else if (account.uncorrelated && status !== 'reviewer') {
-        uniqueID = await buildUniqueID(account, currentIDs, config)
-    } else {
-        logger.debug(lm(`Taking identity uid as unique ID`, c, 1))
-        const identity = identities.find((x) => x.id === account.identityId) as IdentityDocument
-        uniqueID = identity?.attributes!.uid
-    }
+    uniqueID = await buildUniqueID(account, currentIDs, config)
+
+    // if (status !== 'reviewer') {
+    //     uniqueID = await buildUniqueID(account, currentIDs, config)
+    // } else {
+    //     logger.debug(lm(`Taking identity uid as unique ID`, c, 1))
+    //     const identity = identities.find((x) => x.id === account.identityId) as IdentityDocument
+    //     uniqueID = identity?.attributes!.uid
+    // }
 
     const uniqueAccount: Account = { ...account }
-    uniqueAccount.attributes.id = uniqueID
+    uniqueAccount.attributes.uniqueID = uniqueID
     uniqueAccount.attributes.accounts = [account.id]
     uniqueAccount.attributes.status = [status]
     uniqueAccount.attributes.reviews = []

@@ -17,7 +17,6 @@ import {
     getFormName,
     getInputFromDescription,
     getOwnerFromSource,
-    getReviewerIDs,
     lm,
     logErrors,
     processFormInstance,
@@ -42,15 +41,15 @@ export class ContextHelper {
     private config?: Config
     private reviewerIDs: Map<string, string[]>
     private source?: Source
-    schema?: AccountSchema
-    ids: string[]
-    identities: IdentityDocument[]
-    currentIdentities: IdentityDocument[]
-    accounts: Account[]
-    authoritativeAccounts: Account[]
-    forms: FormDefinitionResponseBeta[]
-    formInstances: FormInstanceResponseBeta[]
-    errors: string[]
+    private schema?: AccountSchema
+    private ids: string[]
+    private identities: IdentityDocument[]
+    private currentIdentities: IdentityDocument[]
+    private accounts: Account[]
+    private authoritativeAccounts: Account[]
+    private forms: FormDefinitionResponseBeta[]
+    private formInstances: FormInstanceResponseBeta[]
+    private errors: string[]
 
     constructor() {
         this.sources = []
@@ -94,13 +93,21 @@ export class ContextHelper {
         this.reviewerIDs = await buildReviewersMap(this.client, this.config, this.source, this.sources)
 
         if (!skipData) {
-            this.identities = await this.getIdentities()
-            this.accounts = await this.getAccounts()
+            this.identities = await this.listIdentities()
+            this.accounts = await this.listAccounts()
             const identityIDs = this.accounts.map((x) => x.identityId)
-            this.authoritativeAccounts = await this.getAuthoritativeAccounts()
+            this.authoritativeAccounts = await this.listAuthoritativeAccounts()
             this.currentIdentities = this.identities.filter((x) => identityIDs.includes(x.id))
-            this.forms = await this.getForms()
+            this.forms = await this.listForms()
             this.formInstances = await this.getFormInstances(this.forms)
+
+            if (this.config.uid_scope === 'source') {
+                logger.info('Compiling current IDs for source scope.')
+                this.ids = this.accounts.map((x) => x.attributes.uniqueID)
+            } else {
+                logger.info('Compiling current IDs for tenant scope.')
+                this.ids = this.identities.map((x) => x.attributes!.uid)
+            }
         } else {
             this.identities = []
             this.accounts = []
@@ -128,15 +135,15 @@ export class ContextHelper {
         return this.source!
     }
 
-    getSources(): Source[] {
+    listSources(): Source[] {
         return this.sources
     }
 
-    getReviewerIDs(source: string): string[] {
+    listReviewerIDs(source: string): string[] {
         return this.reviewerIDs.get(source) || []
     }
 
-    getAllReviewerIDs(): string[] {
+    listAllReviewerIDs(): string[] {
         const ids = Array.from(this.reviewerIDs.values()).flat()
 
         return Array.from(new Set(ids))
@@ -149,7 +156,11 @@ export class ContextHelper {
         }
     }
 
-    async getIdentities(): Promise<IdentityDocument[]> {
+    isFirstRun(): boolean {
+        return this.accounts.length === 0
+    }
+
+    private async listIdentities(): Promise<IdentityDocument[]> {
         const c = 'getIdentities'
         logger.info(lm('Fetching identities.', c))
         const identities = await this.getClient().listIdentities()
@@ -161,11 +172,11 @@ export class ContextHelper {
         return this.identities.find((x) => x.id === id)
     }
 
-    async loadIdentities() {
-        this.identities = await this.getIdentities()
+    getIdentityByUID(uid: string): IdentityDocument | undefined {
+        return this.identities.find((x) => x.attributes!.uid === uid)
     }
 
-    async getAccounts(): Promise<Account[]> {
+    private async listAccounts(): Promise<Account[]> {
         const c = 'getAccounts'
         const config = await this.getConfig()
         const client = this.getClient()
@@ -197,6 +208,10 @@ export class ContextHelper {
         return accounts
     }
 
+    listProcessedAccountIDs(): string[] {
+        return this.accounts.map((x) => x.attributes.accounts).flat()
+    }
+
     async getAccount(id: string): Promise<Account | undefined> {
         const client = this.getClient()
 
@@ -205,14 +220,22 @@ export class ContextHelper {
         return account
     }
 
+    getAccountByIdentity(identity: IdentityDocument): Account | undefined {
+        return this.accounts.find((x) => x.identityId === identity.id)
+    }
+
     getIdentityAccount(identity: IdentityDocument) {
         return this.accounts.find((x) => x.identityId === identity.id)
     }
 
-    async getAuthoritativeAccounts(): Promise<Account[]> {
+    listCurrentIdentityIDs(): string[] {
+        return this.accounts.map((x) => x.identityId!)
+    }
+
+    async listAuthoritativeAccounts(): Promise<Account[]> {
         const c = 'getAuthoritativeAccounts'
         const client = this.getClient()
-        const sources = this.getSources()
+        const sources = this.listSources()
 
         logger.info(lm('Fetching authoritative accounts.', c))
         const authoritativeAccounts = await client.listAccounts(sources.map((x) => x.id!))
@@ -220,7 +243,7 @@ export class ContextHelper {
         return authoritativeAccounts
     }
 
-    async getUniqueAccounts(): Promise<UniqueAccount[]> {
+    async listUniqueAccounts(): Promise<UniqueAccount[]> {
         const c = 'getUniqueAccounts'
         const config = await this.getConfig()
         const accounts: UniqueAccount[] = []
@@ -288,15 +311,19 @@ export class ContextHelper {
         }
     }
 
+    addForm(form: FormDefinitionResponseBeta) {
+        this.forms.push(form)
+    }
+
     getFormName(account?: Account): string {
         return getFormName(this.getSource().name, account)
     }
 
-    getFormInstancesByForm(form: FormDefinitionResponseBeta): FormInstanceResponseBeta[] {
+    listFormInstancesByForm(form: FormDefinitionResponseBeta): FormInstanceResponseBeta[] {
         return this.formInstances.filter((x) => x.formDefinitionId === form.id)
     }
 
-    getFormInstancesByReviewerID(reviewerID: string): FormInstanceResponseBeta[] {
+    listFormInstancesByReviewerID(reviewerID: string): FormInstanceResponseBeta[] {
         return this.formInstances.filter((x) => x.recipients!.find((y) => y.id === reviewerID))
     }
 
@@ -313,7 +340,7 @@ export class ContextHelper {
         )
     }
 
-    async getForms(): Promise<FormDefinitionResponseBeta[]> {
+    async listForms(): Promise<FormDefinitionResponseBeta[]> {
         const client = this.getClient()
 
         const forms = await client.listForms()
@@ -386,14 +413,9 @@ export class ContextHelper {
         return currentFormInstance
     }
 
-    //TODO
     async isMergingEnabled(): Promise<boolean> {
         const config = await this.getConfig()
-        return (
-            config.merging_isEnabled && this.getAllReviewerIDs().length > 0
-            // config.merging_score !== undefined &&
-            // config.merging_expirationDays !== undefined
-        )
+        return config.merging_isEnabled === true && this.listAllReviewerIDs().length > 0
     }
 
     async processUncorrelatedAccount(
@@ -454,9 +476,13 @@ export class ContextHelper {
         await sendEmail(email, this.emailer!, client)
     }
 
+    loadSchema(schema: AccountSchema) {
+        this.schema = schema
+    }
+
     async getSchema(): Promise<AccountSchema> {
         const client = this.getClient()
-        const sources = this.getSources()
+        const sources = this.listSources()
 
         let schema: AccountSchema
         if (this.schema) {
@@ -480,6 +506,17 @@ export class ContextHelper {
 
         if (this.errors.length > 0) {
             await logErrors(context, input, this.errors, source, workflow, client)
+        }
+    }
+
+    async fetchUniqueIDs() {
+        const config = await this.getConfig()
+        if (config.uid_scope === 'source') {
+            logger.info('Compiling current IDs for source scope.')
+            this.ids = this.accounts.map((x) => x.attributes.uniqueID)
+        } else {
+            logger.info('Compiling current IDs for tenant scope.')
+            this.ids = this.identities.map((x) => x.attributes!.uid)
         }
     }
 

@@ -11,29 +11,18 @@ import {
     createConnector,
     logger,
 } from '@sailpoint/connector-sdk'
-import { Account, FormDefinitionInputBeta, IdentityDocument } from 'sailpoint-api-client'
+import { Account } from 'sailpoint-api-client'
 import { Email } from './model/email'
 import { buildReviewFromFormInstance, datedMessage, getAccountByIdentity, getFormValue, opLog } from './utils'
 
 import { ContextHelper } from './contextHelper'
 import { PROCESSINGWAIT } from './constants'
-import { Config } from './model/config'
 import { statuses } from './data/status'
 import { Status } from './model/status'
 
 // Connector must be exported as module property named connector
 export const connector = async () => {
     const ctx = new ContextHelper()
-
-    const fetchUniqueIDs = (config: Config) => {
-        if (config.uid_scope === 'source') {
-            logger.info('Compiling current IDs for source scope.')
-            ctx.ids = ctx.accounts.map((x) => x.attributes.uniqueID)
-        } else {
-            logger.info('Compiling current IDs for tenant scope.')
-            ctx.ids = ctx.identities.map((x) => x.attributes!.uid)
-        }
-    }
 
     //==============================================================================================================
 
@@ -42,7 +31,7 @@ export const connector = async () => {
         await ctx.init(true)
         const config = await ctx.getConfig()
         const source = ctx.getSource()
-        const sources = ctx.getSources()
+        const sources = ctx.listSources()
 
         logger.info(config)
 
@@ -55,9 +44,9 @@ export const connector = async () => {
         }
 
         if (config.merging_isEnabled) {
-            const reviewers = ctx.getAllReviewerIDs()
+            const reviewers = ctx.listAllReviewerIDs()
             if (reviewers.length === 0) {
-                throw new ConnectorError('Unable to find reviewer. Please check your configuration')
+                throw new ConnectorError('Unable to find any reviewer. Please check your configuration')
             }
         }
 
@@ -75,39 +64,35 @@ export const connector = async () => {
             const config = await ctx.getConfig()
             await opLog(config, input)
 
+            //Resetting accounts
             if (config.reset) return
 
             //Compiling info
             logger.info('Loading data.')
             if (input.schema) {
-                ctx.schema = input.schema
+                ctx.loadSchema(input.schema)
             }
             await ctx.init()
-            const processedAccounts = ctx.accounts.map((x) => x.attributes.accounts).flat()
+            const processedAccountIDs = ctx.listProcessedAccountIDs()
             let pendingAccounts: Account[]
+            const authoritativeAccounts = await ctx.listAuthoritativeAccounts()
+            pendingAccounts = authoritativeAccounts.filter((x) => !processedAccountIDs.includes(x.id!))
             if (config.includeExisting) {
                 logger.debug('Including existing identities.')
-                pendingAccounts = ctx.authoritativeAccounts.filter((x) => !processedAccounts.includes(x.id!))
             } else {
                 logger.debug('Excluding existing identities.')
-                pendingAccounts = ctx.authoritativeAccounts
-                    .filter((x) => x.uncorrelated === true)
-                    .filter((x) => !processedAccounts.includes(x.id!))
+                pendingAccounts = pendingAccounts.filter((x) => x.uncorrelated === true)
             }
 
-            const firstRun = ctx.accounts.length === 0
-
-            fetchUniqueIDs(config)
-
-            if (await ctx.isMergingEnabled()) {
+            if ((await ctx.isMergingEnabled()) && !ctx.isFirstRun()) {
                 //PROCESS FORM INSTANCES
                 logger.info('Processing existing forms.')
-                const forms = await ctx.getForms()
+                const forms = await ctx.listForms()
                 forms: for (const currentForm of forms) {
                     let cancelled = true
                     let finished = false
                     const accountID = getFormValue(currentForm, 'account')
-                    const instances = firstRun ? [] : ctx.getFormInstancesByForm(currentForm)
+                    const instances = ctx.listFormInstancesByForm(currentForm)
                     formInstances: for (const currentFormInstance of instances) {
                         logger.debug(`Processing form instance ${currentForm.name} (${currentFormInstance.id}).`)
                         const formName = currentForm.name
@@ -118,13 +103,11 @@ export const connector = async () => {
                                     await ctx.processFormInstance(currentFormInstance)
                                 logger.debug(`Result: ${message}.`)
 
-                                const identityMatch = ctx.identities.find((x) => x.attributes!.uid === decision)
+                                const identityMatch = ctx.getIdentityByUID(decision)
 
                                 if (identityMatch) {
                                     logger.debug(`Updating existing account for ${decision}.`)
-                                    const uniqueAccount = ctx.accounts.find(
-                                        (x) => x.identityId === identityMatch.id
-                                    ) as Account
+                                    const uniqueAccount = ctx.getAccountByIdentity(identityMatch)!
                                     const uncorrelatedAccount = (await ctx.getAccount(accountID)) as Account
                                     const msg = datedMessage(message, uncorrelatedAccount)
                                     uniqueAccount.attributes.accounts.push(account)
@@ -177,10 +160,10 @@ export const connector = async () => {
             //PROCESS EXISTING IDENTITIES/CREATE BASELINE
             if (config.includeExisting) {
                 logger.info('Processing existing identities.')
-                const currentIdentityIDs = ctx.accounts.map((x) => x.identityId)
+                const currentIdentityIDs = ctx.listCurrentIdentityIDs()
                 //Process correlated accounts not processed yet
                 const correlatedAccounts = pendingAccounts.filter(
-                    (x) => x.uncorrelated === false && !currentIdentityIDs.includes(x.identityId)
+                    (x) => x.uncorrelated === false && !currentIdentityIDs.includes(x.identityId!)
                 )
                 for (const correlatedAccount of correlatedAccounts) {
                     try {
@@ -194,7 +177,7 @@ export const connector = async () => {
             }
 
             //CREATE BASELINE
-            if (firstRun) {
+            if (ctx.isFirstRun()) {
                 //First run
                 logger.info('First run. Creating baseline.')
                 for (const uncorrelatedAccount of pendingAccounts) {
@@ -220,7 +203,7 @@ export const connector = async () => {
                         if (await ctx.isMergingEnabled()) {
                             logger.debug(`Creating merging form`)
                             const form = await ctx.createUniqueForm(uniqueForm)
-                            ctx.forms.push(form)
+                            ctx.addForm(form)
                         } else {
                             const message = `Potential matching identity found but no reviewers configured`
                             const uniqueAccount = await ctx.buildUniqueAccount(
@@ -237,11 +220,11 @@ export const connector = async () => {
 
             if (await ctx.isMergingEnabled()) {
                 //PROCESS FORMS
-                const forms = await ctx.getForms()
+                const forms = await ctx.listForms()
                 logger.debug(`Checking form instances exist`)
                 for (const form of forms) {
                     const sourceName = getFormValue(form, 'source')
-                    const reviewerIDs = ctx.getReviewerIDs(sourceName)
+                    const reviewerIDs = ctx.listReviewerIDs(sourceName)
 
                     for (const reviewerID of reviewerIDs) {
                         const reviewer = ctx.getIdentityById(reviewerID)
@@ -269,10 +252,10 @@ export const connector = async () => {
 
                 //PROCESS REVIEWERS
                 logger.info('Processing reviewers.')
-                const reviewerIDs = ctx.getAllReviewerIDs()
+                const reviewerIDs = ctx.listAllReviewerIDs()
                 for (const reviewerID of reviewerIDs) {
                     const reviews = []
-                    for (const instance of ctx.getFormInstancesByReviewerID(reviewerID)) {
+                    for (const instance of ctx.listFormInstancesByReviewerID(reviewerID)) {
                         const form = ctx.getFormByID(instance.formDefinitionId!)
                         if (form) {
                             const review = buildReviewFromFormInstance(instance)
@@ -319,7 +302,7 @@ export const connector = async () => {
             //BUILD RESULTING ACCOUNTS
             logger.info('Building accounts.')
 
-            const accounts = await ctx.getUniqueAccounts()
+            const accounts = await ctx.listUniqueAccounts()
 
             logger.info('Sending accounts.')
             for (const account of accounts) {
@@ -343,7 +326,7 @@ export const connector = async () => {
 
         await ctx.init(true)
         if (input.schema) {
-            ctx.schema = input.schema
+            ctx.loadSchema(input.schema)
         }
         const account = await ctx.buildUniqueAccountFromID(input.identity)
         logger.info(account)
@@ -360,7 +343,7 @@ export const connector = async () => {
 
         await ctx.init(true)
         if (input.schema) {
-            ctx.schema = input.schema
+            ctx.loadSchema(input.schema)
         }
 
         //Keepalive
@@ -373,11 +356,12 @@ export const connector = async () => {
             .then((result) => {
                 logger.info(result)
                 res.send(result)
-                clearInterval(interval) // Stops checking once the promise is resolved
             })
             .catch((error) => {
                 logger.error(error)
-                clearInterval(interval) // Stops checking if the promise is rejected
+            })
+            .finally(() => {
+                clearInterval(interval)
             })
 
         await account
@@ -393,7 +377,7 @@ export const connector = async () => {
 
         await ctx.init()
         if (input.schema) {
-            ctx.schema = input.schema
+            ctx.loadSchema(input.schema)
         }
 
         //Keepalive
@@ -401,23 +385,23 @@ export const connector = async () => {
             res.keepAlive()
         }, PROCESSINGWAIT)
 
-        fetchUniqueIDs(config)
         const uniqueID = await ctx.buildUniqueID(input.identity)
         const account = ctx.buildUniqueAccountFromID(input.identity)
+        const schema = await ctx.getSchema()
         account
             .then((result) => {
                 result.disabled = true
                 result.attributes.IIQDisabled = true
                 result.attributes.uniqueID = uniqueID
-                if (ctx.schema) {
+                if (schema) {
                     result.identity = (
-                        result.attributes[ctx.schema.identityAttribute]
-                            ? result.attributes[ctx.schema.identityAttribute]
+                        result.attributes[schema.identityAttribute]
+                            ? result.attributes[schema.identityAttribute]
                             : result.attributes.uuid
                     ) as string
                     result.uuid = (
-                        result.attributes[ctx.schema.displayAttribute]
-                            ? (result.attributes[ctx.schema.displayAttribute] as string)
+                        result.attributes[schema.displayAttribute]
+                            ? (result.attributes[schema.displayAttribute] as string)
                             : result.attributes.uuid
                     ) as string
                 } else {
@@ -426,11 +410,12 @@ export const connector = async () => {
                 }
                 logger.info(result)
                 res.send(result)
-                clearInterval(interval) // Stops checking once the promise is resolved
             })
             .catch((error) => {
                 logger.error(error)
-                clearInterval(interval) // Stops checking if the promise is rejected
+            })
+            .finally(() => {
+                clearInterval(interval)
             })
 
         await account

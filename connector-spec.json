@@ -185,7 +185,7 @@
                         },
                         {
                             "key": "merging_reviewerIsSourceOwner",
-                            "label": "Use each source's owner as reviewer?",
+                            "label": "Use each source's governance group or owner as reviewer?",
                             "parentKey": "merging_isEnabled",
                             "parentValue": "true",
                             "type": "checkbox",
@@ -242,7 +242,7 @@
                                             "label": "Use mapping for unique ID generation only",
                                             "type": "checkbox",
                                             "required": false,
-                                            "helpKey": "When checked, this mapping is not used for deduplication but only for unique ID generation"
+                                            "helpKey": "When checked, this mapping is not used for merging but only for unique ID generation"
                                         }
                                     ]
                                 },

@@ -180,7 +180,7 @@ export const getAccountByIdentity = (identity: IdentityDocument, sourceID: strin
     return identity.accounts!.find((x) => x.source!.id === sourceID)
 }
 
-export const getIdentities = async (
+export const listIdentities = async (
     client: SDKClient,
     source: Source
 ): Promise<{ [key: string]: IdentityDocument[] }> => {
@@ -206,13 +206,13 @@ export const buildReviewersMap = async (
 ): Promise<Map<string, string[]>> => {
     const reviewersMap = new Map<string, string[]>()
     let defaultReviewerIDs: string[] = []
-    if (config.merging_reviewerIsSourceOwner) {
-        defaultReviewerIDs = await getReviewerIDs(client, currentSource)
+    if (!config.merging_reviewerIsSourceOwner) {
+        defaultReviewerIDs = await listReviewerIDs(client, currentSource)
     }
 
     for (const source of sources) {
         if (config.merging_reviewerIsSourceOwner) {
-            const reviewerIDs = await getReviewerIDs(client, source)
+            const reviewerIDs = await listReviewerIDs(client, source)
             reviewersMap.set(source.name, reviewerIDs)
         } else {
             reviewersMap.set(source.name, defaultReviewerIDs)
@@ -222,7 +222,7 @@ export const buildReviewersMap = async (
     return reviewersMap
 }
 
-export const getReviewerIDs = async (client: SDKClient, source: Source): Promise<string[]> => {
+export const listReviewerIDs = async (client: SDKClient, source: Source): Promise<string[]> => {
     const c = 'getReviewerIDs'
     logger.debug(lm(`Fetching reviewers for ${source.name}`, c, 1))
     let reviewers: string[] = []

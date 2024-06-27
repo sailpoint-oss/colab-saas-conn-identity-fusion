@@ -35,6 +35,7 @@ export const findSimilarMatches = (
         uidOnly: boolean
     }[],
     score: number
+    // getScore: (attribute: string) => number
 ): { identity: IdentityDocument; score: string }[] => {
     const similarMatches: { identity: IdentityDocument; score: string }[] = []
     const accountAttributes = buildAccountAttributesObject(account, mergingMap)

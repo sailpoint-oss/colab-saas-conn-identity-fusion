@@ -10,6 +10,7 @@ import {
     StdTestConnectionHandler,
     createConnector,
     logger,
+    readConfig,
 } from '@sailpoint/connector-sdk'
 import { Account } from 'sailpoint-api-client'
 import { Email } from './model/email'
@@ -22,14 +23,14 @@ import { Status } from './model/status'
 
 // Connector must be exported as module property named connector
 export const connector = async () => {
-    const ctx = new ContextHelper()
+    const config = await readConfig()
+    const ctx = new ContextHelper(config)
 
     //==============================================================================================================
 
     //TODO improve
     const stdTest: StdTestConnectionHandler = async (context, input, res) => {
         await ctx.init(true)
-        const config = await ctx.getConfig()
         const source = ctx.getSource()
         const sources = ctx.listSources()
 
@@ -61,7 +62,6 @@ export const connector = async () => {
         }, PROCESSINGWAIT)
 
         try {
-            const config = await ctx.getConfig()
             await opLog(config, input)
 
             //Resetting accounts
@@ -110,9 +110,9 @@ export const connector = async () => {
                                     const uniqueAccount = ctx.getAccountByIdentity(identityMatch)!
                                     const uncorrelatedAccount = (await ctx.getAccount(accountID)) as Account
                                     const msg = datedMessage(message, uncorrelatedAccount)
-                                    uniqueAccount.attributes.accounts.push(account)
-                                    uniqueAccount.attributes.history.push(msg)
-                                    uniqueAccount.attributes.status.push('manual')
+                                    uniqueAccount.attributes!.accounts.push(account)
+                                    uniqueAccount.attributes!.history.push(msg)
+                                    uniqueAccount.attributes!.status.push('manual')
                                 } else {
                                     logger.debug(`Creating new unique account.`)
                                     const pendingAccount = pendingAccounts.find((x) => x.id === account) as Account
@@ -317,7 +317,6 @@ export const connector = async () => {
     }
 
     const stdAccountRead: StdAccountReadHandler = async (context, input, res) => {
-        const config = await ctx.getConfig()
         await opLog(config, input)
 
         logger.info(`Reading ${input.identity} account.`)
@@ -334,7 +333,6 @@ export const connector = async () => {
     }
 
     const stdAccountEnable: StdAccountEnableHandler = async (context, input, res) => {
-        const config = await ctx.getConfig()
         await opLog(config, input)
 
         logger.info(`Enabling ${input.identity} account.`)
@@ -368,7 +366,6 @@ export const connector = async () => {
     }
 
     const stdAccountDisable: StdAccountDisableHandler = async (context, input, res) => {
-        const config = await ctx.getConfig()
         await opLog(config, input)
 
         logger.info(`Disabling ${input.identity} account.`)
@@ -452,7 +449,6 @@ export const connector = async () => {
     }
 
     const stdAccountDiscoverSchema: StdAccountDiscoverSchemaHandler = async (context, input, res) => {
-        const config = await ctx.getConfig()
         await opLog(config, input)
         logger.info('Building dynamic schema.')
 

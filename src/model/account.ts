@@ -10,10 +10,10 @@ export class UniqueAccount implements StdAccountListOutput {
 
     constructor(account: Account, schema?: AccountSchema) {
         this.disabled = account.uncorrelated
-        this.attributes = account.attributes
+        this.attributes = account.attributes!
         this.attributes.IIQDisabled = this.disabled
 
-        const accountsCount = account.attributes.accounts.length
+        const accountsCount = account.attributes!.accounts.length
         let status = this.attributes.status as string[]
         if (accountsCount === 0) {
             this.attributes.status = combineArrays(status, ['orphan'])
@@ -22,15 +22,15 @@ export class UniqueAccount implements StdAccountListOutput {
         }
 
         if (schema) {
-            this.identity = account.attributes[schema.identityAttribute]
-                ? account.attributes[schema.identityAttribute]
-                : account.attributes.uuid
-            this.uuid = account.attributes[schema.displayAttribute]
-                ? account.attributes[schema.displayAttribute]
-                : account.attributes.uuid
+            this.identity = account.attributes![schema.identityAttribute]
+                ? account.attributes![schema.identityAttribute]
+                : account.attributes!.uuid
+            this.uuid = account.attributes![schema.displayAttribute]
+                ? account.attributes![schema.displayAttribute]
+                : account.attributes!.uuid
         } else {
-            this.identity = account.attributes.uuid
-            this.uuid = account.attributes.uuid
+            this.identity = account.attributes!.uuid
+            this.uuid = account.attributes!.uuid
         }
         // if (status.includes('reviewer')) {
         //     this.uuid = account.name

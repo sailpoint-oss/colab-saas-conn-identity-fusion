@@ -317,7 +317,7 @@ export class UniqueForm implements CreateFormDefinitionRequestBeta {
                 this.formInput.push(buildFormDefinitionInput(name, identity.attributes![attribute]))
             }
             const name = buildID(UniqueForm.NEW_IDENTITY, attribute)
-            this.formInput.push(buildFormDefinitionInput(name, account.attributes[attribute]))
+            this.formInput.push(buildFormDefinitionInput(name, account.attributes![attribute]))
         }
 
         this.formInput.push(buildFormDefinitionInput('name', account.nativeIdentity))

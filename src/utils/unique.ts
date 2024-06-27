@@ -82,23 +82,23 @@ export const buildUniqueAccount = async (
 
     uniqueID = await buildUniqueID(account, currentIDs, config)
 
-    // if (status !== 'reviewer') {
-    //     uniqueID = await buildUniqueID(account, currentIDs, config)
-    // } else {
-    //     logger.debug(lm(`Taking identity uid as unique ID`, c, 1))
-    //     const identity = identities.find((x) => x.id === account.identityId) as IdentityDocument
-    //     uniqueID = identity?.attributes!.uid
-    // }
+    if (status !== 'reviewer') {
+        uniqueID = await buildUniqueID(account, currentIDs, config)
+    } else {
+        logger.debug(lm(`Taking identity uid as unique ID`, c, 1))
+        const identity = identities.find((x) => x.id === account.identityId) as IdentityDocument
+        uniqueID = identity?.attributes!.uid
+    }
 
     const uniqueAccount: Account = { ...account }
-    uniqueAccount.attributes.uniqueID = uniqueID
-    uniqueAccount.attributes.accounts = [account.id]
-    uniqueAccount.attributes.status = [status]
-    uniqueAccount.attributes.reviews = []
+    uniqueAccount.attributes!.uniqueID = uniqueID
+    uniqueAccount.attributes!.accounts = [account.id]
+    uniqueAccount.attributes!.status = [status]
+    uniqueAccount.attributes!.reviews = []
 
     if (msg) {
         const message = datedMessage(msg, account)
-        uniqueAccount.attributes.history = [message]
+        uniqueAccount.attributes!.history = [message]
     }
     return uniqueAccount
 }
@@ -121,9 +121,9 @@ export const buildUniqueAccountFromID = async (
         const correlatedAccounts = accounts
             .filter((x) => config.sources.includes(x.sourceName!))
             .map((x) => x.id as string)
-        account.attributes.accounts = combineArrays(correlatedAccounts, account.attributes.accounts)
+        account.attributes!.accounts = combineArrays(correlatedAccounts, account.attributes!.accounts)
 
-        for (const acc of account.attributes.accounts) {
+        for (const acc of account.attributes!.accounts) {
             logger.debug(lm(`Looking for ${acc} account`, c, 1))
             const response = await client.getAccount(acc)
             if (response) {

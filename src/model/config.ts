@@ -28,8 +28,9 @@ export interface Config {
         uidOnly: boolean
         attributeMerge?: 'multi' | 'concatenate' | 'first' | 'source'
         source?: string
-        reviewer?: string
+        merging_score?: number
     }[]
+    global_merging_score: boolean
     merging_score?: number
     merging_reviewerIsSourceOwner: boolean
     since: string

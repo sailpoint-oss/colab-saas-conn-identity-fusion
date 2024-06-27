@@ -200,9 +200,17 @@
                             "required": true
                         },
                         {
+                            "key": "global_merging_score",
+                            "label": "Use overall merging score for all attributes?",
+                            "parentKey": "merging_isEnabled",
+                            "parentValue": "true",
+                            "type": "checkbox",
+                            "required": false
+                        },
+                        {
                             "key": "merging_score",
                             "label": "Minimum similarity score [0-100] (LIG3 similarity function * 100 from Levenshtein distance)",
-                            "parentKey": "merging_isEnabled",
+                            "parentKey": "global_merging_score",
                             "parentValue": "true",
                             "type": "number",
                             "required": true
@@ -281,6 +289,12 @@
                                             "parentValue": "source",
                                             "required": true,
                                             "helpKey": "Technical name of the identity attribute to compare with"
+                                        },
+                                        {
+                                            "key": "merging_score",
+                                            "label": "Minimum similarity score [0-100] (LIG3 similarity function * 100 from Levenshtein distance)",
+                                            "type": "number",
+                                            "required": false
                                         }
                                     ]
                                 }

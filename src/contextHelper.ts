@@ -38,7 +38,7 @@ export class ContextHelper {
     private emailer?: WorkflowBeta
     private sources: Source[]
     private client?: SDKClient
-    private config?: Config
+    private config: Config
     private reviewerIDs: Map<string, string[]>
     private source?: Source
     private schema?: AccountSchema
@@ -51,7 +51,8 @@ export class ContextHelper {
     private formInstances: FormInstanceResponseBeta[]
     private errors: string[]
 
-    constructor() {
+    constructor(config: Config) {
+        this.config = config
         this.sources = []
         this.ids = []
         this.identities = []
@@ -103,7 +104,7 @@ export class ContextHelper {
 
             if (this.config.uid_scope === 'source') {
                 logger.info('Compiling current IDs for source scope.')
-                this.ids = this.accounts.map((x) => x.attributes.uniqueID)
+                this.ids = this.accounts.map((x) => x.attributes!.uniqueID)
             } else {
                 logger.info('Compiling current IDs for tenant scope.')
                 this.ids = this.identities.map((x) => x.attributes!.uid)
@@ -121,14 +122,6 @@ export class ContextHelper {
 
     private getClient(): SDKClient {
         return this.client!
-    }
-
-    async getConfig(): Promise<Config> {
-        if (this.config) {
-            return this.config
-        } else {
-            return await readConfig()
-        }
     }
 
     getSource(): Source {
@@ -178,7 +171,6 @@ export class ContextHelper {
 
     private async listAccounts(): Promise<Account[]> {
         const c = 'getAccounts'
-        const config = await this.getConfig()
         const client = this.getClient()
         const source = this.getSource()
 
@@ -189,10 +181,10 @@ export class ContextHelper {
         logger.debug(lm('Updating existing account links.', c))
         for (const account of accounts) {
             // updateAccountLinks(account, this.identities, config.sources)
-            account.attributes.accounts = account.attributes.accounts || []
-            account.attributes.status = account.attributes.status || []
-            account.attributes.reviews = account.attributes.reviews || []
-            account.attributes.history = account.attributes.history || []
+            account.attributes!.accounts = account.attributes!.accounts || []
+            account.attributes!.status = account.attributes!.status || []
+            account.attributes!.reviews = account.attributes!.reviews || []
+            account.attributes!.history = account.attributes!.history || []
         }
         // if (this.config?.deleteEmpty) {
         //     accounts = accounts.filter(
@@ -209,7 +201,7 @@ export class ContextHelper {
     }
 
     listProcessedAccountIDs(): string[] {
-        return this.accounts.map((x) => x.attributes.accounts).flat()
+        return this.accounts.map((x) => x.attributes!.accounts).flat()
     }
 
     async getAccount(id: string): Promise<Account | undefined> {
@@ -245,31 +237,30 @@ export class ContextHelper {
 
     async listUniqueAccounts(): Promise<UniqueAccount[]> {
         const c = 'getUniqueAccounts'
-        const config = await this.getConfig()
         const accounts: UniqueAccount[] = []
         const uuids: string[] = []
 
         logger.debug(lm('Updating existing account links.', c))
         for (const account of this.accounts) {
-            updateAccountLinks(account, this.identities, config.sources)
+            updateAccountLinks(account, this.identities, this.config.sources)
         }
         if (this.config?.deleteEmpty) {
             this.accounts = this.accounts.filter(
                 (x) =>
                     !(
                         x.uncorrelated === false &&
-                        x.attributes.accounts.length === 0 &&
-                        !x.attributes.status.includes('reviewer')
+                        x.attributes!.accounts.length === 0 &&
+                        !x.attributes!.status.includes('reviewer')
                     )
             )
         }
 
         for (const account of this.accounts) {
-            while (!account.attributes.uuid) {
+            while (!account.attributes!.uuid) {
                 const uuid = uuidv4()
                 if (!uuids.includes(uuid)) {
                     uuids.push(uuid)
-                    account.attributes.uuid = uuid
+                    account.attributes!.uuid = uuid
                 }
             }
         }
@@ -289,21 +280,27 @@ export class ContextHelper {
 
     async getUniqueAccount(account: Account): Promise<UniqueAccount | undefined> {
         const sources = this.sources.map((x) => x.name)
-        const config = await this.getConfig()
         const client = this.getClient()
         const schema = await this.getSchema()
 
-        const sourceAccounts: Account[] = []
+        let sourceAccounts: Account[] = []
         for (const sourceName of sources) {
-            const a = this.authoritativeAccounts.find(
-                (x) => x.sourceName === sourceName && account.attributes.accounts.includes(x.id)
+            const accounts = this.authoritativeAccounts.filter(
+                (x) => x.sourceName === sourceName && account.attributes!.accounts.includes(x.id)
             )
-            if (a) sourceAccounts.push(a)
+            sourceAccounts = sourceAccounts.concat(accounts)
         }
         if (sourceAccounts.length === 0) sourceAccounts.push(account)
 
         try {
-            const uniqueAccount = await refreshAccount(account, sourceAccounts, schema, this.identities, config, client)
+            const uniqueAccount = await refreshAccount(
+                account,
+                sourceAccounts,
+                schema,
+                this.identities,
+                this.config,
+                client
+            )
 
             return uniqueAccount
         } catch (error) {
@@ -394,11 +391,10 @@ export class ContextHelper {
     }
 
     async createFormInstance(form: FormDefinitionResponseBeta, reviewerID: string) {
-        const config = await this.getConfig()
         const client = this.getClient()
         const source = this.getSource()
 
-        const expire = getExpirationDate(config)
+        const expire = getExpirationDate(this.config)
         const formInput = form.formInput?.reduce(getInputFromDescription, {})
 
         const currentFormInstance = await client.createFormInstance(
@@ -414,14 +410,12 @@ export class ContextHelper {
     }
 
     async isMergingEnabled(): Promise<boolean> {
-        const config = await this.getConfig()
-        return config.merging_isEnabled === true && this.listAllReviewerIDs().length > 0
+        return this.config.merging_isEnabled === true && this.listAllReviewerIDs().length > 0
     }
 
     async processUncorrelatedAccount(
         uncorrelatedAccount: Account
     ): Promise<{ processedAccount: Account | undefined; uniqueForm: UniqueForm | undefined }> {
-        const config = await this.getConfig()
         const source = this.getSource()
         const deduplicate = await this.isMergingEnabled()
 
@@ -430,7 +424,7 @@ export class ContextHelper {
             this.accounts,
             this.currentIdentities,
             source,
-            config,
+            this.config,
             deduplicate
         )
 
@@ -438,10 +432,8 @@ export class ContextHelper {
     }
 
     async buildUniqueAccount(account: Account, status: string, msg: string): Promise<Account> {
-        const config = await this.getConfig()
-
-        const uniqueAccount = await buildUniqueAccount(account, status, msg, this.identities, this.ids, config)
-        this.ids.push(uniqueAccount.attributes.uniqueID)
+        const uniqueAccount = await buildUniqueAccount(account, status, msg, this.identities, this.ids, this.config)
+        this.ids.push(uniqueAccount.attributes!.uniqueID)
         this.accounts.push(uniqueAccount)
 
         return uniqueAccount
@@ -449,22 +441,20 @@ export class ContextHelper {
 
     async buildUniqueAccountFromID(id: string): Promise<UniqueAccount> {
         const client = this.getClient()
-        const config = await this.getConfig()
         const source = this.getSource()
         const schema = await this.getSchema()
 
-        const uniqueAccount = await buildUniqueAccountFromID(id, schema, source, this.identities, config, client)
+        const uniqueAccount = await buildUniqueAccountFromID(id, schema, source, this.identities, this.config, client)
 
         return uniqueAccount
     }
 
     async buildUniqueID(id: string): Promise<string> {
         const client = this.getClient()
-        const config = await this.getConfig()
         const source = this.getSource()
 
         const account = await client.getAccountBySourceAndNativeIdentity(source.id!, id)
-        const uniqueID = await buildUniqueID(account!, this.ids, config)
+        const uniqueID = await buildUniqueID(account!, this.ids, this.config)
         this.ids.push(uniqueID)
 
         return uniqueID
@@ -488,8 +478,7 @@ export class ContextHelper {
         if (this.schema) {
             schema = this.schema
         } else {
-            const config = await this.getConfig()
-            schema = await buildDynamicSchema(sources, config, client)
+            schema = await buildDynamicSchema(sources, this.config, client)
         }
 
         return schema
@@ -510,17 +499,16 @@ export class ContextHelper {
     }
 
     async fetchUniqueIDs() {
-        const config = await this.getConfig()
-        if (config.uid_scope === 'source') {
+        if (this.config.uid_scope === 'source') {
             logger.info('Compiling current IDs for source scope.')
-            this.ids = this.accounts.map((x) => x.attributes.uniqueID)
+            this.ids = this.accounts.map((x) => x.attributes!.uniqueID)
         } else {
             logger.info('Compiling current IDs for tenant scope.')
             this.ids = this.identities.map((x) => x.attributes!.uid)
         }
     }
 
-    handleError = (error: any) => {
+    handleError(error: any) {
         let message = error
         if (error instanceof Error) {
             let message = error.message
@@ -534,5 +522,17 @@ export class ContextHelper {
         logger.error(message)
         logger.error(error)
         this.errors.push(message)
+    }
+
+    getScore(attribute: string): number {
+        let score
+        if (this.config.global_merging_score) {
+            score = this.config.merging_score
+        } else {
+            const attributeConfig = this.config.merging_map.find((x) => x.identity === attribute)
+            score = attributeConfig?.merging_score
+        }
+
+        return score ? score : 100
     }
 }

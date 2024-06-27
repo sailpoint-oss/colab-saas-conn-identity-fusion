@@ -335,7 +335,7 @@ export class SDKClient {
     async listSourceSchemas(sourceId: string) {
         const api = new SourcesApi(this.config)
 
-        const response = await api.listSourceSchemas({ sourceId })
+        const response = await api.getSourceSchemas({ sourceId })
 
         return response.data
     }

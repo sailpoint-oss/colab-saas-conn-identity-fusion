@@ -238,7 +238,7 @@ export const listReviewerIDs = async (client: SDKClient, source: Source): Promis
         }
     } else if (source.owner || reviewers.length === 0) {
         logger.debug(lm('Reviewer is the owner', c, 1))
-        const reviewerIdentity = await client.getIdentityByUID(source.owner.name!)
+        const reviewerIdentity = await client.getIdentity(source.owner.id!)
         if (reviewerIdentity) {
             logger.debug(lm('Reviewer found', c, 1))
             reviewers.push(reviewerIdentity.id!)
@@ -261,7 +261,7 @@ export const updateAccountLinks = (account: Account, identities: IdentityDocumen
             ?.filter((x) => sourceNames.includes(x.source!.name!))
             .map((x) => x.id as string)
         // Removing previously existing authoritative accounts and leaving only existing ones
-        account.attributes.accounts = combineArrays(correlatedAccounts, account.attributes.accounts)
+        account.attributes!.accounts = combineArrays(correlatedAccounts, account.attributes!.accounts)
     }
 }
 
@@ -285,9 +285,9 @@ export const processUncorrelatedAccount = async (
         logger.debug(lm(`Identical match found.`, c, 1))
         const account = currentAccounts.find((x) => x.identityId === identicalMatch.id) as Account
         const message = datedMessage('Identical match found.', uncorrelatedAccount)
-        account.attributes.status.push('auto')
-        account.attributes.accounts.push(uncorrelatedAccount.id)
-        account.attributes.history.push(message)
+        account.attributes!.status.push('auto')
+        account.attributes!.accounts.push(uncorrelatedAccount.id)
+        account.attributes!.history.push(message)
         // Check if similar match exists
     } else {
         let similarMatches: {
@@ -298,6 +298,7 @@ export const processUncorrelatedAccount = async (
             logger.debug(
                 lm(`Checking similar matches for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id})`, c, 1)
             )
+
             similarMatches = findSimilarMatches(
                 uncorrelatedAccount,
                 currentIdentities,
@@ -340,7 +341,7 @@ export const refreshAccount = async (
 ): Promise<UniqueAccount> => {
     const c = 'refreshAccount'
 
-    logger.debug(lm(`Refreshing ${account.attributes.uniqueID} account`, c, 1))
+    logger.debug(lm(`Refreshing ${account.attributes!.uniqueID} account`, c, 1))
     const attributes = account.attributes
 
     for (const attrDef of schema.attributes) {
@@ -353,11 +354,11 @@ export const refreshAccount = async (
                 if (attrConf) {
                     for (const accountAttr of attrConf.account) {
                         if (!sourceAccount.attributes) logger.warn(sourceAccount)
-                        value = sourceAccount.attributes[accountAttr]
+                        value = sourceAccount.attributes![accountAttr]
                         if (value) break
                     }
                 } else {
-                    value = sourceAccount.attributes[attrDef.name]
+                    value = sourceAccount.attributes![attrDef.name]
                 }
                 if (value) {
                     let lst: string[]
@@ -366,7 +367,7 @@ export const refreshAccount = async (
                             if (firstSource) {
                                 lst = [].concat(value)
                             } else {
-                                let previousList: string[] = [].concat(attributes[attrDef.name])
+                                let previousList: string[] = [].concat(attributes![attrDef.name])
                                 if (previousList.length === 0) {
                                     lst = [].concat(value)
                                 } else if (previousList.length > 1) {
@@ -375,7 +376,7 @@ export const refreshAccount = async (
                                     lst = [...attrSplit(previousList[0]), value]
                                 }
                             }
-                            attributes[attrDef.name] = Array.from(new Set(lst))
+                            attributes![attrDef.name] = Array.from(new Set(lst))
                             break
 
                         case 'concatenate':
@@ -383,24 +384,24 @@ export const refreshAccount = async (
                                 lst = [].concat(value)
                             } else {
                                 lst = []
-                                let previousList: string[] = [].concat(attributes[attrDef.name])
+                                let previousList: string[] = [].concat(attributes![attrDef.name])
                                 for (const item of previousList) {
                                     lst = lst.concat(attrSplit(item))
                                 }
                                 lst = lst.concat(attrSplit(value))
                             }
-                            attributes[attrDef.name] = attrConcat(lst)
+                            attributes![attrDef.name] = attrConcat(lst)
                             break
                         case 'first':
                             if (firstSource) {
-                                attributes[attrDef.name] = value
+                                attributes![attrDef.name] = value
                             }
                             break
 
                         case 'source':
                             const source = attrConf?.source
                             if (sourceAccount.sourceName === source) {
-                                attributes[attrDef.name] = value
+                                attributes![attrDef.name] = value
                             }
                             break
                         default:
@@ -412,7 +413,7 @@ export const refreshAccount = async (
         }
     }
 
-    attributes.status = Array.from(new Set(attributes.status))
+    attributes!.status = Array.from(new Set(attributes!.status))
 
     if (account.uncorrelated) {
         logger.debug(lm(`New account. Needs to be enabled.`, c, 2))
@@ -442,7 +443,7 @@ export const refreshAccount = async (
             accounts = (identity as IdentityDocument).accounts!
         }
 
-        for (const acc of account.attributes.accounts as string[]) {
+        for (const acc of account.attributes!.accounts as string[]) {
             const uid: string = (identity.attributes as any).uid
             try {
                 if (!accounts.find((x) => x.id === acc)) {
@@ -451,7 +452,7 @@ export const refreshAccount = async (
                 }
             } catch (e) {
                 logger.error(lm(`Failed to correlate ${acc} account with ${uid}.`, c, 1))
-                account.attributes.accounts = account.attributes.accounts.filter((x: string) => x !== acc)
+                account.attributes!.accounts = account.attributes!.accounts.filter((x: string) => x !== acc)
             }
         }
     }
@@ -472,10 +473,10 @@ export const normalizeAccountAttributes = (
 ): Account => {
     const normalizedAccount = { ...account }
     for (const attribute of mergingMap) {
-        if (!normalizedAccount.attributes[attribute.identity]) {
+        if (!normalizedAccount.attributes![attribute.identity]) {
             for (const accAttribute of attribute.account) {
-                if (normalizedAccount.attributes[accAttribute]) {
-                    normalizedAccount.attributes[attribute.identity] = normalizedAccount.attributes[accAttribute]
+                if (normalizedAccount.attributes![accAttribute]) {
+                    normalizedAccount.attributes![attribute.identity] = normalizedAccount.attributes![accAttribute]
                     break
                 }
             }
@@ -502,9 +503,9 @@ export const buildAccountAttributesObject = (
 
     for (const { identity: key, account: values } of mergingMap.filter((x) => x.uidOnly === false)) {
         for (const value of values.reverse()) {
-            const v = account.attributes[value]
+            const v = account.attributes![value]
             if (v) {
-                attributeObject[key] = account.attributes[value]
+                attributeObject[key] = account.attributes![value]
             }
         }
         if (!attributeObject[key]) {

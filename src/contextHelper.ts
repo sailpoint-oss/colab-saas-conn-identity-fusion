@@ -3,16 +3,16 @@ import {
     FormDefinitionResponseBeta,
     FormInstanceResponseBeta,
     IdentityDocument,
+    OwnerDto,
     Source,
     WorkflowBeta,
 } from 'sailpoint-api-client'
 import { Config } from './model/config'
 import { SDKClient } from './sdk-client'
-import { AccountSchema, Context, logger, readConfig } from '@sailpoint/connector-sdk'
+import { AccountSchema, Context, logger } from '@sailpoint/connector-sdk'
 import {
     buildDynamicSchema,
     buildReviewersMap,
-    getEmailWorkflow,
     getExpirationDate,
     getFormName,
     getInputFromDescription,
@@ -32,12 +32,13 @@ import { Email } from './model/email'
 import { UniqueAccount } from './model/account'
 import { AxiosError } from 'axios'
 import { v4 as uuidv4 } from 'uuid'
+import { EmailWorkflow } from './model/emailWorkflow'
 
 export class ContextHelper {
     private c: string = 'ContextHelper'
     private emailer?: WorkflowBeta
     private sources: Source[]
-    private client?: SDKClient
+    private client: SDKClient
     private config: Config
     private reviewerIDs: Map<string, string[]>
     private source?: Source
@@ -64,6 +65,10 @@ export class ContextHelper {
         this.errors = []
         this.reviewerIDs = new Map<string, string[]>()
 
+        logger.debug(lm(`Initializing SDK client.`, this.c))
+        this.client = new SDKClient(this.config)
+
+        this.config!.merging_map = this.config?.merging_map || []
         this.config.getScore = (attribute?: string): number => {
             let score
             if (this.config.global_merging_score) {
@@ -78,12 +83,6 @@ export class ContextHelper {
     }
 
     async init(skipData?: boolean) {
-        logger.debug(lm(`Reading config.`, this.c))
-        this.config = (await readConfig()) as Config
-        this.config!.merging_map = this.config?.merging_map || []
-        logger.debug(lm(`Initializing SDK client.`, this.c))
-        this.client = new SDKClient(this.config)
-
         logger.debug(lm(`Looking for connector instance`, this.c))
         const id = this.config?.spConnectorInstanceId as string
         const allSources = await this.client.listSources()
@@ -94,10 +93,9 @@ export class ContextHelper {
             throw new Error('No connector source was found on the tenant.')
         }
 
-        logger.debug(lm(`Initializing SDK client.`, this.c))
         const owner = getOwnerFromSource(this.source)
         const wfName = `${WORKFLOW_NAME} (${this.config!.cloudDisplayName})`
-        this.emailer = await getEmailWorkflow(this.client, wfName, owner)
+        this.emailer = await this.getEmailWorkflow(wfName, owner)
 
         if (!this.emailer) {
             throw new Error('Unable to instantiate email workflow')
@@ -518,6 +516,22 @@ export class ContextHelper {
             logger.info('Compiling current IDs for tenant scope.')
             this.ids = this.identities.map((x) => x.attributes!.uid)
         }
+    }
+
+    private async getEmailWorkflow(name: string, owner: OwnerDto): Promise<WorkflowBeta | undefined> {
+        const c = 'getEmailWorkflow'
+        logger.debug(lm('Fetching workflows', c, 1))
+        const workflows = await this.client.listWorkflows()
+        let workflow = workflows.find((x) => x.name === name)
+        if (workflow) {
+            logger.debug(lm('Workflow found', c, 1))
+        } else {
+            logger.debug(lm('Creating workflow', c, 1))
+            const emailWorkflow = new EmailWorkflow(name, owner)
+            workflow = await this.client.createWorkflow(emailWorkflow)
+        }
+
+        return workflow
     }
 
     handleError(error: any) {

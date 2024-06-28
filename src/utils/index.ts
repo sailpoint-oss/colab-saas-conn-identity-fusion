@@ -544,25 +544,25 @@ export const buildIdentityAttributesObject = (
 }
 
 //================ WORKFLOWS ================
-export const getEmailWorkflow = async (
-    client: SDKClient,
-    name: string,
-    owner: OwnerDto
-): Promise<WorkflowBeta | undefined> => {
-    const c = 'getEmailWorkflow'
-    logger.debug(lm('Fetching workflows', c, 1))
-    const workflows = await client.listWorkflows()
-    let workflow = workflows.find((x) => x.name === name)
-    if (workflow) {
-        logger.debug(lm('Workflow found', c, 1))
-    } else {
-        logger.debug(lm('Creating workflow', c, 1))
-        const emailWorkflow = new EmailWorkflow(name, owner)
-        workflow = await client.createWorkflow(emailWorkflow)
-    }
+// export const getEmailWorkflow = async (
+//     client: SDKClient,
+//     name: string,
+//     owner: OwnerDto
+// ): Promise<WorkflowBeta | undefined> => {
+//     const c = 'getEmailWorkflow'
+//     logger.debug(lm('Fetching workflows', c, 1))
+//     const workflows = await client.listWorkflows()
+//     let workflow = workflows.find((x) => x.name === name)
+//     if (workflow) {
+//         logger.debug(lm('Workflow found', c, 1))
+//     } else {
+//         logger.debug(lm('Creating workflow', c, 1))
+//         const emailWorkflow = new EmailWorkflow(name, owner)
+//         workflow = await client.createWorkflow(emailWorkflow)
+//     }
 
-    return workflow
-}
+//     return workflow
+// }
 
 export const sendEmail = async (email: Email, workflow: WorkflowBeta, client: SDKClient) => {
     await client.testWorkflow(workflow.id!, email)

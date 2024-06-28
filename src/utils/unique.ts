@@ -68,40 +68,40 @@ export const buildUniqueID = async (account: Account, currentIDs: string[], conf
     return id
 }
 
-export const buildUniqueAccount = async (
-    account: Account,
-    status: string,
-    msg: string | undefined,
-    identities: IdentityDocument[],
-    currentIDs: string[],
-    config: Config
-): Promise<Account> => {
-    const c = 'buildUniqueAccount'
-    logger.debug(lm(`Processing ${account.name} (${account.id})`, c, 1))
-    let uniqueID: string
+// export const buildUniqueAccount = async (
+//     account: Account,
+//     status: string,
+//     msg: string | undefined,
+//     identities: IdentityDocument[],
+//     currentIDs: string[],
+//     config: Config
+// ): Promise<Account> => {
+//     const c = 'buildUniqueAccount'
+//     logger.debug(lm(`Processing ${account.name} (${account.id})`, c, 1))
+//     let uniqueID: string
 
-    uniqueID = await buildUniqueID(account, currentIDs, config)
+//     uniqueID = await buildUniqueID(account, currentIDs, config)
 
-    if (status !== 'reviewer') {
-        uniqueID = await buildUniqueID(account, currentIDs, config)
-    } else {
-        logger.debug(lm(`Taking identity uid as unique ID`, c, 1))
-        const identity = identities.find((x) => x.id === account.identityId) as IdentityDocument
-        uniqueID = identity?.attributes!.uid
-    }
+//     if (status !== 'reviewer') {
+//         uniqueID = await buildUniqueID(account, currentIDs, config)
+//     } else {
+//         logger.debug(lm(`Taking identity uid as unique ID`, c, 1))
+//         const identity = identities.find((x) => x.id === account.identityId) as IdentityDocument
+//         uniqueID = identity?.attributes!.uid
+//     }
 
-    const uniqueAccount: Account = { ...account }
-    uniqueAccount.attributes!.uniqueID = uniqueID
-    uniqueAccount.attributes!.accounts = [account.id]
-    uniqueAccount.attributes!.status = [status]
-    uniqueAccount.attributes!.reviews = []
+//     const uniqueAccount: Account = { ...account }
+//     uniqueAccount.attributes!.uniqueID = uniqueID
+//     uniqueAccount.attributes!.accounts = [account.id]
+//     uniqueAccount.attributes!.status = [status]
+//     uniqueAccount.attributes!.reviews = []
 
-    if (msg) {
-        const message = datedMessage(msg, account)
-        uniqueAccount.attributes!.history = [message]
-    }
-    return uniqueAccount
-}
+//     if (msg) {
+//         const message = datedMessage(msg, account)
+//         uniqueAccount.attributes!.history = [message]
+//     }
+//     return uniqueAccount
+// }
 
 // export const buildUniqueAccountFromID = async (
 //     id: string,

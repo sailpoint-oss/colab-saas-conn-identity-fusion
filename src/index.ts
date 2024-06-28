@@ -299,12 +299,9 @@ export const connector = async () => {
             }
 
             //BUILD RESULTING ACCOUNTS
-            logger.info('Building accounts.')
-
-            const accounts = await ctx.listUniqueAccounts()
 
             logger.info('Sending accounts.')
-            for (const account of accounts) {
+            for await (const account of ctx.listUniqueAccounts()) {
                 logger.info(account)
                 res.send(account)
             }

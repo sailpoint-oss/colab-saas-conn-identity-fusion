@@ -26,6 +26,7 @@ import {
     attrSplit,
     combineArrays,
     composeErrorMessage,
+    datedMessage,
     getExpirationDate,
     getFormName,
     getInputFromDescription,
@@ -38,7 +39,7 @@ import {
 } from './utils'
 import { IDENTITYNOTFOUNDRETRIES, IDENTITYNOTFOUNDWAIT, WORKFLOW_NAME, reservedAttributes } from './constants'
 import { UniqueForm } from './model/form'
-import { buildUniqueAccount, buildUniqueID } from './utils/unique'
+import { buildUniqueID } from './utils/unique'
 import { Email, ErrorEmail } from './model/email'
 import { UniqueAccount } from './model/account'
 import { AxiosError } from 'axios'
@@ -247,15 +248,11 @@ export class ContextHelper {
         return authoritativeAccounts
     }
 
-    async listUniqueAccounts(): Promise<UniqueAccount[]> {
+    async *listUniqueAccounts(): AsyncGenerator<UniqueAccount> {
         const c = 'listUniqueAccounts'
         const accounts: UniqueAccount[] = []
         const uuids: string[] = []
 
-        logger.debug(lm('Updating existing account links.', c))
-        for (const account of this.accounts) {
-            updateAccountLinks(account, this.identities, this.config.sources)
-        }
         if (this.config.deleteEmpty) {
             this.accounts = this.accounts.filter(
                 (x) =>
@@ -267,35 +264,31 @@ export class ContextHelper {
             )
         }
 
+        logger.debug(lm('Updating accounts.', c))
         for (const account of this.accounts) {
+            updateAccountLinks(account, this.identities, this.config.sources)
+
             while (!account.attributes!.uuid) {
                 const uuid = uuidv4()
                 if (!uuids.includes(uuid)) {
                     uuids.push(uuid)
                     account.attributes!.uuid = uuid
+                    uuids.push(uuid)
                 }
             }
-        }
 
-        for (const acc of this.accounts) {
-            const uniqueAccount = await this.getUniqueAccount(acc)
+            const uniqueAccount = await this.refreshUniqueAccount(account)
             if (uniqueAccount) {
-                accounts.push(uniqueAccount)
-                if (uniqueAccount.attributes.uuid) {
-                    uuids.push(uniqueAccount.attributes.uuid as string)
-                }
+                yield uniqueAccount
             }
         }
-
-        return accounts
     }
 
-    async getUniqueAccount(account: Account): Promise<UniqueAccount | undefined> {
-        const c = 'getUniqueAccount'
-        const sources = this.sources.map((x) => x.name)
+    async refreshUniqueAccount(account: Account): Promise<UniqueAccount | undefined> {
+        const c = 'refreshUniqueAccount'
 
         let sourceAccounts: Account[] = []
-        for (const sourceName of sources) {
+        for (const sourceName of this.config.sources) {
             const accounts = this.authoritativeAccounts.filter(
                 (x) => x.sourceName === sourceName && account.attributes!.accounts.includes(x.id)
             )
@@ -429,6 +422,79 @@ export class ContextHelper {
         }
     }
 
+    async buildUniqueAccount(account: Account, status: string, msg: string): Promise<Account> {
+        const c = 'buildUniqueAccount'
+        logger.debug(lm(`Processing ${account.name} (${account.id})`, c, 1))
+        let uniqueID: string
+
+        uniqueID = await buildUniqueID(account, this.ids, this.config)
+
+        if (status !== 'reviewer') {
+            uniqueID = await buildUniqueID(account, this.ids, this.config)
+        } else {
+            logger.debug(lm(`Taking identity uid as unique ID`, c, 1))
+            const identity = this.identities.find((x) => x.id === account.identityId) as IdentityDocument
+            uniqueID = identity?.attributes!.uid
+        }
+
+        const uniqueAccount: Account = { ...account }
+        uniqueAccount.attributes!.uniqueID = uniqueID
+        uniqueAccount.attributes!.accounts = [account.id]
+        uniqueAccount.attributes!.status = [status]
+        uniqueAccount.attributes!.reviews = []
+
+        if (msg) {
+            const message = datedMessage(msg, account)
+            uniqueAccount.attributes!.history = [message]
+        }
+
+        this.ids.push(uniqueAccount.attributes!.uniqueID)
+        this.accounts.push(uniqueAccount)
+
+        return uniqueAccount
+    }
+
+    async buildUniqueAccountFromID(id: string): Promise<UniqueAccount> {
+        const schema = await this.getSchema()
+
+        const c = 'buildUniqueAccountFromID'
+        logger.debug(lm(`Fetching original account`, c, 1))
+        const account = await this.client.getAccountBySourceAndNativeIdentity(this.getSource().id!, id)
+        const sourceAccounts: Account[] = []
+        if (account) {
+            const identity = await this.client.getIdentity(account.identityId!)
+            const accounts = await this.client.getAccountsByIdentity(identity!.id!)
+            const correlatedAccounts = accounts
+                .filter((x) => this.config.sources.includes(x.sourceName!))
+                .map((x) => x.id as string)
+            account.attributes!.accounts = combineArrays(correlatedAccounts, account.attributes!.accounts)
+
+            for (const acc of account.attributes!.accounts) {
+                logger.debug(lm(`Looking for ${acc} account`, c, 1))
+                const response = await this.client.getAccount(acc)
+                if (response) {
+                    logger.debug(lm(`Found linked account ${response.name} (${response.sourceName})`, c, 1))
+                    sourceAccounts.push(response)
+                } else {
+                    logger.error(lm(`Unable to find account ID ${acc}`, c, 1))
+                }
+            }
+
+            const uniqueAccount = await this.refreshUniqueAccount(account)
+            return uniqueAccount!
+        } else {
+            throw new ConnectorError('Account not found', ConnectorErrorType.NotFound)
+        }
+    }
+
+    async buildUniqueID(id: string): Promise<string> {
+        const account = await this.client.getAccountBySourceAndNativeIdentity(this.source!.id!, id)
+        const uniqueID = await buildUniqueID(account!, this.ids, this.config)
+        this.ids.push(uniqueID)
+
+        return uniqueID
+    }
+
     addForm(form: FormDefinitionResponseBeta) {
         this.forms.push(form)
     }
@@ -538,55 +604,6 @@ export class ContextHelper {
         )
 
         return response
-    }
-
-    async buildUniqueAccount(account: Account, status: string, msg: string): Promise<Account> {
-        const uniqueAccount = await buildUniqueAccount(account, status, msg, this.identities, this.ids, this.config)
-        this.ids.push(uniqueAccount.attributes!.uniqueID)
-        this.accounts.push(uniqueAccount)
-
-        return uniqueAccount
-    }
-
-    async buildUniqueAccountFromID(id: string): Promise<UniqueAccount> {
-        const schema = await this.getSchema()
-
-        const c = 'buildUniqueAccountFromID'
-        logger.debug(lm(`Fetching original account`, c, 1))
-        const account = await this.client.getAccountBySourceAndNativeIdentity(this.getSource().id!, id)
-        const sourceAccounts: Account[] = []
-        if (account) {
-            const identity = await this.client.getIdentity(account.identityId!)
-            const accounts = await this.client.getAccountsByIdentity(identity!.id!)
-            const correlatedAccounts = accounts
-                .filter((x) => this.config.sources.includes(x.sourceName!))
-                .map((x) => x.id as string)
-            account.attributes!.accounts = combineArrays(correlatedAccounts, account.attributes!.accounts)
-
-            for (const acc of account.attributes!.accounts) {
-                logger.debug(lm(`Looking for ${acc} account`, c, 1))
-                const response = await this.client.getAccount(acc)
-                if (response) {
-                    logger.debug(lm(`Found linked account ${response.name} (${response.sourceName})`, c, 1))
-                    sourceAccounts.push(response)
-                } else {
-                    logger.error(lm(`Unable to find account ID ${acc}`, c, 1))
-                }
-            }
-
-            const uniqueAccount = await this.getUniqueAccount(account)
-            return uniqueAccount!
-        } else {
-            throw new ConnectorError('Account not found', ConnectorErrorType.NotFound)
-        }
-    }
-
-    async buildUniqueID(id: string): Promise<string> {
-        const account = await this.client.getAccountBySourceAndNativeIdentity(this.source!.id!, id)
-        const uniqueID = await buildUniqueID(account!, this.ids, this.config)
-        this.ids.push(uniqueID)
-
-        return uniqueID
     }
 
     async sendEmail(email: Email) {

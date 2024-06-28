@@ -50,4 +50,5 @@ export interface Config {
     version: number
     reset: boolean
     includeExisting: boolean
+    getScore: (attribute?: string) => number
 }

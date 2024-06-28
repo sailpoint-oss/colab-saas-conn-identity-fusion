@@ -20,6 +20,11 @@
 
 ## Changelog
 
+-   0.0.4 (2024-06-28):
+    -   Updated sailpoint-api-client to v1.3.4
+    -   Added option to use governance group/owner of each origin source as reviewer
+    -   Added option to use overall merging score or individual attribute score
+    -   Bug fixes
 -   0.0.3 (2024-04-03):
     -   Updated sailpoint-api-client to v1.3.2
     -   Added keepalive messages to account aggregation process
@@ -186,13 +191,15 @@ The connector supports discovering the schema. The schema is built by merging th
 
     -   **Upper case**: change string to upper case.
 
-![Deduplication configuration](assets/images/deduplication-configuration2.png)
+![Merging/mapping configuration](assets/images/deduplication-configuration.png)
 
 -   **List of identity attributes to include in form**: list of identity attributes to include in form.
 
--   **Manual reviewer identity or governance group**: UID of reviewer or governance group name.
+-   **Use each source's governance group or owner as reviewer**: if checked, each configured source's governance group, if set, or owner by default is used as reviewer for that source's accounts. If unchecked, the Fusion connector source is used instead.
 
 -   **Manual review expiration days**: number of days after the form instance expires.
+
+-   **Use overall merging score for all attributes?**: if checked, an single overall score is used for merging and a mean score is calculated. If not, you must provide a merging score to all configured attributes and all attributes must meet that threshold.
 
 -   **Minimum similarity score [0-100] (LIG3 similarity function \* 100 from Levenshtein distance)**: similarity score to apply attribute by attribute configured below. 0 is totally different and 100 is exactly the same. More information here.
 
@@ -218,7 +225,7 @@ The connector supports discovering the schema. The schema is built by merging th
 
 Correlation configuration depends on the situation:
 
--   _Authoritative source_: reviewer accounts always get the identity’s UID as unique identifier. Therefore, when using deduplication, correlation from identity’s UID to account’s id must be set.
+-   _Authoritative source_: reviewer accounts always get the identity’s UID as unique identifier. Therefore, when using deduplication, correlation from identity’s UID to account’s UniqueID must be set.
 
 -   _Regular source_: in order for the proxy accounts to directly correlate to the corresponding identities, we need to identify those account attributes we can match with identity attributes. This configuration depends on the actual data and it’s no different to any other source account correlation.
 

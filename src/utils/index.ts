@@ -42,6 +42,10 @@ export const sleep = (ms: number) => {
     return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+export const capitalizeFirstLetter = (str: string) => {
+    return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
 export const keepAlive = async (promise: Promise<any>) => {
     const interval = setInterval(() => {
         if (promise) {
@@ -292,7 +296,7 @@ export const processUncorrelatedAccount = async (
     } else {
         let similarMatches: {
             identity: IdentityDocument
-            score: string
+            score: Map<string, string>
         }[] = []
         if (merge) {
             logger.debug(
@@ -303,7 +307,8 @@ export const processUncorrelatedAccount = async (
                 uncorrelatedAccount,
                 currentIdentities,
                 config.merging_map,
-                config.merging_score!
+                config.getScore,
+                config.global_merging_score
             )
         }
 
@@ -319,7 +324,8 @@ export const processUncorrelatedAccount = async (
                 formOwner,
                 uncorrelatedAccount,
                 similarMatches,
-                config.merging_attributes
+                config.merging_attributes,
+                config.getScore
             )
         } else {
             // No matching existing identity found

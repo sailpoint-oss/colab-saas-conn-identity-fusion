@@ -63,6 +63,18 @@ export class ContextHelper {
         this.formInstances = []
         this.errors = []
         this.reviewerIDs = new Map<string, string[]>()
+
+        this.config.getScore = (attribute?: string): number => {
+            let score
+            if (this.config.global_merging_score) {
+                score = this.config.merging_score
+            } else {
+                const attributeConfig = this.config.merging_map.find((x) => x.identity === attribute)
+                score = attributeConfig?.merging_score
+            }
+
+            return score ? score : 0
+        }
     }
 
     async init(skipData?: boolean) {
@@ -216,7 +228,7 @@ export class ContextHelper {
         return this.accounts.find((x) => x.identityId === identity.id)
     }
 
-    getIdentityAccount(identity: IdentityDocument) {
+    getIdentityAccount(identity: IdentityDocument): Account | undefined {
         return this.accounts.find((x) => x.identityId === identity.id)
     }
 
@@ -522,17 +534,5 @@ export class ContextHelper {
         logger.error(message)
         logger.error(error)
         this.errors.push(message)
-    }
-
-    getScore(attribute: string): number {
-        let score
-        if (this.config.global_merging_score) {
-            score = this.config.merging_score
-        } else {
-            const attributeConfig = this.config.merging_map.find((x) => x.identity === attribute)
-            score = attributeConfig?.merging_score
-        }
-
-        return score ? score : 100
     }
 }

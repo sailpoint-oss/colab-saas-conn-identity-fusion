@@ -264,9 +264,8 @@ export const connector = async () => {
                     }
 
                     const reviewer = ctx.getIdentityById(reviewerID)!
-                    let reviewerAccount = ctx.getIdentityAccount(reviewer)
-
                     if (reviewer) {
+                        let reviewerAccount = ctx.getIdentityAccount(reviewer)
                         if (reviewerAccount) {
                             logger.debug(`${reviewer.attributes!.uid} reviewer account found.`)
                             reviewerAccount.attributes!.reviews = reviews

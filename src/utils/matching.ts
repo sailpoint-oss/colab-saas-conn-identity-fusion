@@ -34,34 +34,48 @@ export const findSimilarMatches = (
         identity: string
         uidOnly: boolean
     }[],
-    score: number
-    // getScore: (attribute: string) => number
-): { identity: IdentityDocument; score: string }[] => {
-    const similarMatches: { identity: IdentityDocument; score: string }[] = []
+    getScore: (attribute?: string) => number,
+    globalScore: boolean
+): { identity: IdentityDocument; score: Map<string, string> }[] => {
+    const similarMatches: { identity: IdentityDocument; score: Map<string, string> }[] = []
     const accountAttributes = buildAccountAttributesObject(account, mergingMap)
     const length = Object.keys(accountAttributes).length
 
-    for (const candidate of candidates) {
-        const scores: number[] = []
-        for (const attribute of Object.keys(accountAttributes)) {
+    candidates: for (const candidate of candidates) {
+        // const scores: number[] = []
+        const scores = new Map<string, number>()
+        attributes: for (const attribute of Object.keys(accountAttributes)) {
             let cValue, iValue
             iValue = accountAttributes[attribute] as string
             cValue = candidate.attributes![attribute] as string
             if (iValue && cValue) {
                 const similarity = lig3(iValue, cValue)
-                scores.push(similarity)
+                const score = similarity * 100
+                if (!globalScore) {
+                    const threshold = getScore(attribute)
+                    if (score < threshold) {
+                        continue candidates
+                    }
+                }
+                scores.set(attribute, score)
             }
         }
 
-        const finalScore =
-            (scores.reduce((p, c) => {
-                return p + c
-            }, 0) /
-                length) *
-            100
+        if (globalScore) {
+            const finalScore =
+                [...scores.values()].reduce((p, c) => {
+                    return p + c
+                }, 0) / length
 
-        if (finalScore >= score) {
-            similarMatches.push({ identity: candidate, score: finalScore.toFixed(0) })
+            if (finalScore >= getScore()) {
+                const score = new Map<string, string>()
+                score.set('overall', finalScore.toFixed(0))
+                similarMatches.push({ identity: candidate, score })
+            }
+        } else {
+            const score = new Map<string, string>()
+            scores.forEach((v, k) => score.set(k, v.toFixed(0)))
+            similarMatches.push({ identity: candidate, score })
         }
     }
 

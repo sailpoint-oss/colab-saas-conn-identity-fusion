@@ -169,92 +169,92 @@ export const getOwnerFromSource = (source: Source): OwnerDto => {
     }
 }
 
-export const getCurrentSource = async (client: SDKClient, id: string): Promise<Source | undefined> => {
-    const c = 'getCurrentSource'
-    logger.debug(lm('Fetching sources.', c, 1))
-    const sources = await client.listSources()
-    logger.debug(lm(`Looking for connector instance id ${id}.`, c, 1))
-    const source = sources.find((x) => (x.connectorAttributes as any).spConnectorInstanceId === id)
+// export const getCurrentSource = async (client: SDKClient, id: string): Promise<Source | undefined> => {
+//     const c = 'getCurrentSource'
+//     logger.debug(lm('Fetching sources.', c, 1))
+//     const sources = await client.listSources()
+//     logger.debug(lm(`Looking for connector instance id ${id}.`, c, 1))
+//     const source = sources.find((x) => (x.connectorAttributes as any).spConnectorInstanceId === id)
 
-    return source
-}
+//     return source
+// }
 
 //================ IDENTITIES ================
 export const getAccountByIdentity = (identity: IdentityDocument, sourceID: string): BaseAccount | undefined => {
     return identity.accounts!.find((x) => x.source!.id === sourceID)
 }
 
-export const listIdentities = async (
-    client: SDKClient,
-    source: Source
-): Promise<{ [key: string]: IdentityDocument[] }> => {
-    const identities = (await client.listIdentities()).filter((x) => !x.protected)
-    const processedIdentities: IdentityDocument[] = []
-    const unprocessedIdentities: IdentityDocument[] = []
-    for (const identity of identities) {
-        if (identity.accounts!.find((x) => x.source!.id === source.id)) {
-            processedIdentities.push(identity)
-        } else if (identity.attributes!.cloudAuthoritativeSource) {
-            unprocessedIdentities.push(identity)
-        }
-    }
+// export const listIdentities = async (
+//     client: SDKClient,
+//     source: Source
+// ): Promise<{ [key: string]: IdentityDocument[] }> => {
+//     const identities = (await client.listIdentities()).filter((x) => !x.protected)
+//     const processedIdentities: IdentityDocument[] = []
+//     const unprocessedIdentities: IdentityDocument[] = []
+//     for (const identity of identities) {
+//         if (identity.accounts!.find((x) => x.source!.id === source.id)) {
+//             processedIdentities.push(identity)
+//         } else if (identity.attributes!.cloudAuthoritativeSource) {
+//             unprocessedIdentities.push(identity)
+//         }
+//     }
 
-    return { identities, processedIdentities, unprocessedIdentities }
-}
+//     return { identities, processedIdentities, unprocessedIdentities }
+// }
 
-export const buildReviewersMap = async (
-    client: SDKClient,
-    config: Config,
-    currentSource: Source,
-    sources: Source[]
-): Promise<Map<string, string[]>> => {
-    const reviewersMap = new Map<string, string[]>()
-    let defaultReviewerIDs: string[] = []
-    if (!config.merging_reviewerIsSourceOwner) {
-        defaultReviewerIDs = await listReviewerIDs(client, currentSource)
-    }
+// export const buildReviewersMap = async (
+//     client: SDKClient,
+//     config: Config,
+//     currentSource: Source,
+//     sources: Source[]
+// ): Promise<Map<string, string[]>> => {
+//     const reviewersMap = new Map<string, string[]>()
+//     let defaultReviewerIDs: string[] = []
+//     if (!config.merging_reviewerIsSourceOwner) {
+//         defaultReviewerIDs = await listReviewerIDs(client, currentSource)
+//     }
 
-    for (const source of sources) {
-        if (config.merging_reviewerIsSourceOwner) {
-            const reviewerIDs = await listReviewerIDs(client, source)
-            reviewersMap.set(source.name, reviewerIDs)
-        } else {
-            reviewersMap.set(source.name, defaultReviewerIDs)
-        }
-    }
+//     for (const source of sources) {
+//         if (config.merging_reviewerIsSourceOwner) {
+//             const reviewerIDs = await listReviewerIDs(client, source)
+//             reviewersMap.set(source.name, reviewerIDs)
+//         } else {
+//             reviewersMap.set(source.name, defaultReviewerIDs)
+//         }
+//     }
 
-    return reviewersMap
-}
+//     return reviewersMap
+// }
 
-export const listReviewerIDs = async (client: SDKClient, source: Source): Promise<string[]> => {
-    const c = 'getReviewerIDs'
-    logger.debug(lm(`Fetching reviewers for ${source.name}`, c, 1))
-    let reviewers: string[] = []
+// export const listReviewerIDs = async (client: SDKClient, source: Source): Promise<string[]> => {
+//     const c = 'getReviewerIDs'
+//     logger.debug(lm(`Fetching reviewers for ${source.name}`, c, 1))
+//     let reviewers: string[] = []
 
-    if (source.managementWorkgroup) {
-        logger.debug(lm(`Reviewer is ${source.managementWorkgroup.name} workgroup`, c, 1))
-        const workgroups = await client.listWorkgroups()
-        const workgroup = workgroups.find((x) => x.id === source.managementWorkgroup!.id)
-        if (workgroup) {
-            logger.debug(lm('Workgroup found', c, 1))
-            const members = await client.listWorkgroupMembers(workgroup.id!)
-            reviewers = members.map((x) => x.id!)
-        }
-    } else if (source.owner || reviewers.length === 0) {
-        logger.debug(lm('Reviewer is the owner', c, 1))
-        const reviewerIdentity = await client.getIdentity(source.owner.id!)
-        if (reviewerIdentity) {
-            logger.debug(lm('Reviewer found', c, 1))
-            reviewers.push(reviewerIdentity.id!)
-        } else {
-            logger.error(lm(`Reviewer not found ${source.owner.name}`, c, 1))
-        }
-    } else {
-        logger.warn(lm(`No reviewer provided. Merging forms will not be processed.`, c, 1))
-    }
+//     if (source.managementWorkgroup) {
+//         logger.debug(lm(`Reviewer is ${source.managementWorkgroup.name} workgroup`, c, 1))
+//         const workgroups = await client.listWorkgroups()
+//         const workgroup = workgroups.find((x) => x.id === source.managementWorkgroup!.id)
+//         if (workgroup) {
+//             logger.debug(lm('Workgroup found', c, 1))
+//             const members = await client.listWorkgroupMembers(workgroup.id!)
+//             reviewers = members.map((x) => x.id!)
+//         }
+//     } else if (source.owner || reviewers.length === 0) {
+//         logger.debug(lm('Reviewer is the owner', c, 1))
+//         const reviewerIdentity = await client.getIdentity(source.owner.id!)
+//         if (reviewerIdentity) {
+//             logger.debug(lm('Reviewer found', c, 1))
+//             reviewers.push(reviewerIdentity.id!)
+//         } else {
+//             logger.error(lm(`Reviewer not found ${source.owner.name}`, c, 1))
+//         }
+//     } else {
+//         logger.warn(lm(`No reviewer provided. Merging forms will not be processed.`, c, 1))
+//     }
 
-    return reviewers
-}
+//     return reviewers
+// }
 
 //================ ACCOUNTS ================
 
@@ -337,136 +337,136 @@ export const processUncorrelatedAccount = async (
     return { processedAccount, uniqueForm }
 }
 
-export const refreshAccount = async (
-    account: Account,
-    sourceAccounts: Account[],
-    schema: AccountSchema,
-    identities: IdentityDocument[],
-    config: Config,
-    client: SDKClient
-): Promise<UniqueAccount> => {
-    const c = 'refreshAccount'
+// export const refreshAccount = async (
+//     account: Account,
+//     sourceAccounts: Account[],
+//     schema: AccountSchema,
+//     identities: IdentityDocument[],
+//     config: Config,
+//     client: SDKClient
+// ): Promise<UniqueAccount> => {
+//     const c = 'refreshAccount'
 
-    logger.debug(lm(`Refreshing ${account.attributes!.uniqueID} account`, c, 1))
-    const attributes = account.attributes
+//     logger.debug(lm(`Refreshing ${account.attributes!.uniqueID} account`, c, 1))
+//     const attributes = account.attributes
 
-    for (const attrDef of schema.attributes) {
-        if (!reservedAttributes.includes(attrDef.name)) {
-            const attrConf = config.merging_map.find((x) => x.identity === attrDef.name)
-            const attributeMerge = attrConf?.attributeMerge || config.attributeMerge
-            let firstSource = true
-            for (const sourceAccount of sourceAccounts) {
-                let value: any
-                if (attrConf) {
-                    for (const accountAttr of attrConf.account) {
-                        if (!sourceAccount.attributes) logger.warn(sourceAccount)
-                        value = sourceAccount.attributes![accountAttr]
-                        if (value) break
-                    }
-                } else {
-                    value = sourceAccount.attributes![attrDef.name]
-                }
-                if (value) {
-                    let lst: string[]
-                    switch (attributeMerge) {
-                        case 'multi':
-                            if (firstSource) {
-                                lst = [].concat(value)
-                            } else {
-                                let previousList: string[] = [].concat(attributes![attrDef.name])
-                                if (previousList.length === 0) {
-                                    lst = [].concat(value)
-                                } else if (previousList.length > 1) {
-                                    lst = [...previousList, value]
-                                } else {
-                                    lst = [...attrSplit(previousList[0]), value]
-                                }
-                            }
-                            attributes![attrDef.name] = Array.from(new Set(lst))
-                            break
+//     for (const attrDef of schema.attributes) {
+//         if (!reservedAttributes.includes(attrDef.name)) {
+//             const attrConf = config.merging_map.find((x) => x.identity === attrDef.name)
+//             const attributeMerge = attrConf?.attributeMerge || config.attributeMerge
+//             let firstSource = true
+//             for (const sourceAccount of sourceAccounts) {
+//                 let value: any
+//                 if (attrConf) {
+//                     for (const accountAttr of attrConf.account) {
+//                         if (!sourceAccount.attributes) logger.warn(sourceAccount)
+//                         value = sourceAccount.attributes![accountAttr]
+//                         if (value) break
+//                     }
+//                 } else {
+//                     value = sourceAccount.attributes![attrDef.name]
+//                 }
+//                 if (value) {
+//                     let lst: string[]
+//                     switch (attributeMerge) {
+//                         case 'multi':
+//                             if (firstSource) {
+//                                 lst = [].concat(value)
+//                             } else {
+//                                 let previousList: string[] = [].concat(attributes![attrDef.name])
+//                                 if (previousList.length === 0) {
+//                                     lst = [].concat(value)
+//                                 } else if (previousList.length > 1) {
+//                                     lst = [...previousList, value]
+//                                 } else {
+//                                     lst = [...attrSplit(previousList[0]), value]
+//                                 }
+//                             }
+//                             attributes![attrDef.name] = Array.from(new Set(lst))
+//                             break
 
-                        case 'concatenate':
-                            if (firstSource) {
-                                lst = [].concat(value)
-                            } else {
-                                lst = []
-                                let previousList: string[] = [].concat(attributes![attrDef.name])
-                                for (const item of previousList) {
-                                    lst = lst.concat(attrSplit(item))
-                                }
-                                lst = lst.concat(attrSplit(value))
-                            }
-                            attributes![attrDef.name] = attrConcat(lst)
-                            break
-                        case 'first':
-                            if (firstSource) {
-                                attributes![attrDef.name] = value
-                            }
-                            break
+//                         case 'concatenate':
+//                             if (firstSource) {
+//                                 lst = [].concat(value)
+//                             } else {
+//                                 lst = []
+//                                 let previousList: string[] = [].concat(attributes![attrDef.name])
+//                                 for (const item of previousList) {
+//                                     lst = lst.concat(attrSplit(item))
+//                                 }
+//                                 lst = lst.concat(attrSplit(value))
+//                             }
+//                             attributes![attrDef.name] = attrConcat(lst)
+//                             break
+//                         case 'first':
+//                             if (firstSource) {
+//                                 attributes![attrDef.name] = value
+//                             }
+//                             break
 
-                        case 'source':
-                            const source = attrConf?.source
-                            if (sourceAccount.sourceName === source) {
-                                attributes![attrDef.name] = value
-                            }
-                            break
-                        default:
-                            break
-                    }
-                }
-                firstSource = false
-            }
-        }
-    }
+//                         case 'source':
+//                             const source = attrConf?.source
+//                             if (sourceAccount.sourceName === source) {
+//                                 attributes![attrDef.name] = value
+//                             }
+//                             break
+//                         default:
+//                             break
+//                     }
+//                 }
+//                 firstSource = false
+//             }
+//         }
+//     }
 
-    attributes!.status = Array.from(new Set(attributes!.status))
+//     attributes!.status = Array.from(new Set(attributes!.status))
 
-    if (account.uncorrelated) {
-        logger.debug(lm(`New account. Needs to be enabled.`, c, 2))
-    } else {
-        logger.debug(lm(`Existing account. Enforcing defined correlation.`, c, 1))
-        let identity: IdentityDocument | IdentityBeta | undefined
-        let accounts: Account[] | BaseAccount[]
-        identity = identities.find((x) => x.id === account.identityId) as IdentityDocument
-        if (!identity) {
-            let count = 0
-            let wait = IDENTITYNOTFOUNDWAIT
-            while (!identity) {
-                identity = await client.getIdentity(account.identityId!)
-                if (!identity) {
-                    if (++count > IDENTITYNOTFOUNDRETRIES)
-                        throw new Error(
-                            `Identity ${account.identityId} for account ${account.nativeIdentity} not found`
-                        )
+//     if (account.uncorrelated) {
+//         logger.debug(lm(`New account. Needs to be enabled.`, c, 2))
+//     } else {
+//         logger.debug(lm(`Existing account. Enforcing defined correlation.`, c, 1))
+//         let identity: IdentityDocument | IdentityBeta | undefined
+//         let accounts: Account[] | BaseAccount[]
+//         identity = identities.find((x) => x.id === account.identityId) as IdentityDocument
+//         if (!identity) {
+//             let count = 0
+//             let wait = IDENTITYNOTFOUNDWAIT
+//             while (!identity) {
+//                 identity = await client.getIdentity(account.identityId!)
+//                 if (!identity) {
+//                     if (++count > IDENTITYNOTFOUNDRETRIES)
+//                         throw new Error(
+//                             `Identity ${account.identityId} for account ${account.nativeIdentity} not found`
+//                         )
 
-                    logger.warn(lm(`Identity ID ${account.identityId} not found. Re-trying...`, c, 1))
-                    await sleep(wait)
-                    wait = wait + IDENTITYNOTFOUNDWAIT
-                }
-            }
-            accounts = await client.getAccountsByIdentity(identity!.id!)
-        } else {
-            accounts = (identity as IdentityDocument).accounts!
-        }
+//                     logger.warn(lm(`Identity ID ${account.identityId} not found. Re-trying...`, c, 1))
+//                     await sleep(wait)
+//                     wait = wait + IDENTITYNOTFOUNDWAIT
+//                 }
+//             }
+//             accounts = await client.getAccountsByIdentity(identity!.id!)
+//         } else {
+//             accounts = (identity as IdentityDocument).accounts!
+//         }
 
-        for (const acc of account.attributes!.accounts as string[]) {
-            const uid: string = (identity.attributes as any).uid
-            try {
-                if (!accounts.find((x) => x.id === acc)) {
-                    logger.debug(lm(`Correlating ${acc} account with ${uid}.`, c, 1))
-                    const response = await client.correlateAccount(identity?.id as string, acc)
-                }
-            } catch (e) {
-                logger.error(lm(`Failed to correlate ${acc} account with ${uid}.`, c, 1))
-                account.attributes!.accounts = account.attributes!.accounts.filter((x: string) => x !== acc)
-            }
-        }
-    }
+//         for (const acc of account.attributes!.accounts as string[]) {
+//             const uid: string = (identity.attributes as any).uid
+//             try {
+//                 if (!accounts.find((x) => x.id === acc)) {
+//                     logger.debug(lm(`Correlating ${acc} account with ${uid}.`, c, 1))
+//                     const response = await client.correlateAccount(identity?.id as string, acc)
+//                 }
+//             } catch (e) {
+//                 logger.error(lm(`Failed to correlate ${acc} account with ${uid}.`, c, 1))
+//                 account.attributes!.accounts = account.attributes!.accounts.filter((x: string) => x !== acc)
+//             }
+//         }
+//     }
 
-    const uniqueAccount = new UniqueAccount(account, schema)
+//     const uniqueAccount = new UniqueAccount(account, schema)
 
-    return uniqueAccount
-}
+//     return uniqueAccount
+// }
 
 export const normalizeAccountAttributes = (
     account: Account,
@@ -564,18 +564,43 @@ export const buildIdentityAttributesObject = (
 //     return workflow
 // }
 
-export const sendEmail = async (email: Email, workflow: WorkflowBeta, client: SDKClient) => {
-    await client.testWorkflow(workflow.id!, email)
-}
+// export const sendEmail = async (email: Email, workflow: WorkflowBeta, client: SDKClient) => {
+//     await client.testWorkflow(workflow.id!, email)
+// }
 
-export const logErrors = async (
-    context: Context,
-    input: any,
-    errors: string[],
-    source: Source,
-    workflow: WorkflowBeta,
-    client: SDKClient
-) => {
+// export const logErrors = async (
+//     context: Context,
+//     input: any,
+//     errors: string[],
+//     source: Source,
+//     workflow: WorkflowBeta,
+//     client: SDKClient
+// ) => {
+//     let message = ''
+//     message += md.render('## Context')
+//     message += md.render('```json')
+//     message += md.render(JSON.stringify(context))
+//     message += md.render('```')
+
+//     message += md.render('## Input')
+//     message += md.render('```json')
+//     message += md.render(JSON.stringify(input))
+//     message += md.render('```')
+
+//     message += md.render('## Errors')
+
+//     for (const error of errors) {
+//         message += md.render(`- ${error}`)
+//     }
+
+//     const ownerID = source.owner.id as string
+//     const recipient = await client.getIdentityBySearch(ownerID)
+//     const email = new ErrorEmail(source, recipient!.email!, message)
+
+//     await sendEmail(email, workflow, client)
+// }
+
+export const composeErrorMessage = (context: Context, input: any, errors: string[]): string => {
     let message = ''
     message += md.render('## Context')
     message += md.render('```json')
@@ -593,39 +618,35 @@ export const logErrors = async (
         message += md.render(`- ${error}`)
     }
 
-    const ownerID = source.owner.id as string
-    const recipient = await client.getIdentityBySearch(ownerID)
-    const email = new ErrorEmail(source, recipient!.email!, message)
-
-    await sendEmail(email, workflow, client)
+    return message
 }
 
 //================ FORMS ================
-export const processFormInstance = async (
-    client: SDKClient,
-    formInstance: FormInstanceResponseBeta
-): Promise<{ decision: string; account: string; message: string }> => {
-    const c = 'processFormInstance'
-    const now = new Date().toISOString()
-    let message = ''
-    const decision = formInstance.formData!['identities'].toString()
-    const account = (formInstance.formInput!['account'] as any).value
-    const reviewerIdentity = await client.getIdentityBySearch(formInstance.recipients![0].id!)
-    const reviewerName = reviewerIdentity
-        ? reviewerIdentity.displayName
-            ? reviewerIdentity.displayName
-            : reviewerIdentity.name
-        : formInstance.recipients![0].id!
+// export const processFormInstance = async (
+//     client: SDKClient,
+//     formInstance: FormInstanceResponseBeta
+// ): Promise<{ decision: string; account: string; message: string }> => {
+//     const c = 'processFormInstance'
+//     const now = new Date().toISOString()
+//     let message = ''
+//     const decision = formInstance.formData!['identities'].toString()
+//     const account = (formInstance.formInput!['account'] as any).value
+//     const reviewerIdentity = await client.getIdentityBySearch(formInstance.recipients![0].id!)
+//     const reviewerName = reviewerIdentity
+//         ? reviewerIdentity.displayName
+//             ? reviewerIdentity.displayName
+//             : reviewerIdentity.name
+//         : formInstance.recipients![0].id!
 
-    if (decision === 'This is a new identity') {
-        message = `New identity approved by ${reviewerName}`
-    } else {
-        const source = (formInstance.formInput!.source as any).value
-        message = `Assignment approved by ${reviewerName}`
-    }
+//     if (decision === 'This is a new identity') {
+//         message = `New identity approved by ${reviewerName}`
+//     } else {
+//         const source = (formInstance.formInput!.source as any).value
+//         message = `Assignment approved by ${reviewerName}`
+//     }
 
-    return { decision, account, message }
-}
+//     return { decision, account, message }
+// }
 
 export const getFormName = (sourceName: string, account?: Account): string => {
     let name: string
@@ -651,151 +672,151 @@ export const buildReviewFromFormInstance = (instance: FormInstanceResponseBeta):
 }
 
 //================ SCHEMAS ================
-export const buildDynamicSchema = async (
-    sources: Source[],
-    config: Config,
-    client: SDKClient
-): Promise<AccountSchema> => {
-    const c = 'buildDynamicSchema'
-    logger.debug(lm('Fetching sources.', c, 1))
-    const schemas: Schema[] = []
-    logger.debug(lm('Fetching schemas.', c, 1))
-    for (const source of sources) {
-        const sourceSchemas = await client.listSourceSchemas(source.id!)
-        schemas.push(sourceSchemas.find((x) => x.name === 'account') as Schema)
-    }
+// export const buildDynamicSchema = async (
+//     sources: Source[],
+//     config: Config,
+//     client: SDKClient
+// ): Promise<AccountSchema> => {
+//     const c = 'buildDynamicSchema'
+//     logger.debug(lm('Fetching sources.', c, 1))
+//     const schemas: Schema[] = []
+//     logger.debug(lm('Fetching schemas.', c, 1))
+//     for (const source of sources) {
+//         const sourceSchemas = await client.listSourceSchemas(source.id!)
+//         schemas.push(sourceSchemas.find((x) => x.name === 'account') as Schema)
+//     }
 
-    logger.debug(lm('Compiling attributes.', c, 1))
-    let combinedAttributes: Map<string, AttributeDefinition> = new Map()
-    for (const schema of schemas.reverse()) {
-        schema.attributes?.forEach((x) => combinedAttributes.set(x.name!, x))
-    }
+//     logger.debug(lm('Compiling attributes.', c, 1))
+//     let combinedAttributes: Map<string, AttributeDefinition> = new Map()
+//     for (const schema of schemas.reverse()) {
+//         schema.attributes?.forEach((x) => combinedAttributes.set(x.name!, x))
+//     }
 
-    logger.debug(lm('Defining static attributes.', c, 1))
-    const attributes: SchemaAttribute[] = [
-        {
-            name: 'uniqueID',
-            description: 'Unique ID',
-            type: 'string',
-            required: true,
-        },
-        {
-            name: 'uuid',
-            description: 'UUID',
-            type: 'string',
-            required: true,
-        },
-        {
-            name: 'history',
-            description: 'History',
-            type: 'string',
-            multi: true,
-        },
-        {
-            name: 'status',
-            description: 'Status',
-            type: 'string',
-            multi: true,
-            entitlement: true,
-            managed: false,
-            schemaObjectType: 'status',
-        },
-        {
-            name: 'accounts',
-            description: 'Account IDs',
-            type: 'string',
-            multi: true,
-            entitlement: false,
-        },
-        {
-            name: 'reviews',
-            description: 'Reviews',
-            type: 'string',
-            multi: true,
-            entitlement: false,
-        },
-    ]
+//     logger.debug(lm('Defining static attributes.', c, 1))
+//     const attributes: SchemaAttribute[] = [
+//         {
+//             name: 'uniqueID',
+//             description: 'Unique ID',
+//             type: 'string',
+//             required: true,
+//         },
+//         {
+//             name: 'uuid',
+//             description: 'UUID',
+//             type: 'string',
+//             required: true,
+//         },
+//         {
+//             name: 'history',
+//             description: 'History',
+//             type: 'string',
+//             multi: true,
+//         },
+//         {
+//             name: 'status',
+//             description: 'Status',
+//             type: 'string',
+//             multi: true,
+//             entitlement: true,
+//             managed: false,
+//             schemaObjectType: 'status',
+//         },
+//         {
+//             name: 'accounts',
+//             description: 'Account IDs',
+//             type: 'string',
+//             multi: true,
+//             entitlement: false,
+//         },
+//         {
+//             name: 'reviews',
+//             description: 'Reviews',
+//             type: 'string',
+//             multi: true,
+//             entitlement: false,
+//         },
+//     ]
 
-    logger.debug(lm('Processing attribute merge mapping.', c, 1))
-    for (const mergingConf of config.merging_map) {
-        const description = mergingConf.source ? mergingConf.source : mergingConf.identity
-        const attribute: any = {
-            name: mergingConf.identity,
-            description,
-            type: 'string',
-        }
+//     logger.debug(lm('Processing attribute merge mapping.', c, 1))
+//     for (const mergingConf of config.merging_map) {
+//         const description = mergingConf.source ? mergingConf.source : mergingConf.identity
+//         const attribute: any = {
+//             name: mergingConf.identity,
+//             description,
+//             type: 'string',
+//         }
 
-        switch (mergingConf.attributeMerge) {
-            case 'multi':
-                attribute.multi = true
-                attribute.entitlement = true
-                break
+//         switch (mergingConf.attributeMerge) {
+//             case 'multi':
+//                 attribute.multi = true
+//                 attribute.entitlement = true
+//                 break
 
-            case 'concatenate':
-                attribute.multi = false
-                break
+//             case 'concatenate':
+//                 attribute.multi = false
+//                 break
 
-            default:
-                break
-        }
+//             default:
+//                 break
+//         }
 
-        attributes.push(attribute)
-    }
+//         attributes.push(attribute)
+//     }
 
-    logger.debug(lm('Processing existing attributes.', c, 1))
-    for (const attribute of combinedAttributes.values()) {
-        if (!attributes.find((x) => x.name === attribute.name!)) {
-            const mergingConf = config.merging_map.find((x) => x.attributeMerge?.includes(attribute.name!))
-            let attributeMerge: string
-            if (mergingConf?.attributeMerge) {
-                attributeMerge = mergingConf.attributeMerge
-            } else {
-                attributeMerge = config.attributeMerge
-            }
-            const matchingSchemas = schemas.filter((x) => x.attributes?.find((y) => y.name === attribute.name))
-            switch (attributeMerge) {
-                case 'multi':
-                    if (matchingSchemas.length > 1) {
-                        attribute.isMulti = true
-                        attribute.type = 'STRING'
-                    }
-                    break
+//     logger.debug(lm('Processing existing attributes.', c, 1))
+//     for (const attribute of combinedAttributes.values()) {
+//         if (!attributes.find((x) => x.name === attribute.name!)) {
+//             const mergingConf = config.merging_map.find((x) => x.attributeMerge?.includes(attribute.name!))
+//             let attributeMerge: string
+//             if (mergingConf?.attributeMerge) {
+//                 attributeMerge = mergingConf.attributeMerge
+//             } else {
+//                 attributeMerge = config.attributeMerge
+//             }
+//             const matchingSchemas = schemas.filter((x) => x.attributes?.find((y) => y.name === attribute.name))
+//             switch (attributeMerge) {
+//                 case 'multi':
+//                     if (matchingSchemas.length > 1) {
+//                         attribute.isMulti = true
+//                         attribute.type = 'STRING'
+//                     }
+//                     break
 
-                case 'concatenate':
-                    attribute.isMulti = false
-                    attribute.type = 'STRING'
-                    break
+//                 case 'concatenate':
+//                     attribute.isMulti = false
+//                     attribute.type = 'STRING'
+//                     break
 
-                default:
-                    break
-            }
+//                 default:
+//                     break
+//             }
 
-            if (attribute.isMulti) {
-                attribute.isEntitlement = true
-                attribute.isGroup = false
-            }
+//             if (attribute.isMulti) {
+//                 attribute.isEntitlement = true
+//                 attribute.isGroup = false
+//             }
 
-            const description = (
-                attribute.description === null || attribute.description === '' ? attribute.name : attribute.description
-            ) as string
-            const schemaAttribute: SchemaAttribute = {
-                name: attribute.name!,
-                description,
-                type: attribute.type ? attribute.type.toLowerCase() : 'string',
-                multi: attribute.isMulti,
-                managed: false,
-                entitlement: attribute.isEntitlement,
-            }
+//             const description = (
+//                 attribute.description === null || attribute.description === '' ? attribute.name : attribute.description
+//             ) as string
+//             const schemaAttribute: SchemaAttribute = {
+//                 name: attribute.name!,
+//                 description,
+//                 type: attribute.type ? attribute.type.toLowerCase() : 'string',
+//                 multi: attribute.isMulti,
+//                 managed: false,
+//                 entitlement: attribute.isEntitlement,
+//             }
 
-            attributes.push(schemaAttribute)
-        }
-    }
+//             attributes.push(schemaAttribute)
+//         }
+//     }
 
-    const schema: any = {
-        attributes,
-        displayAttribute: 'uuid',
-        identityAttribute: 'uuid',
-    }
+//     const schema: any = {
+//         attributes,
+//         displayAttribute: 'uuid',
+//         identityAttribute: 'uuid',
+//     }
 
-    return schema
-}
+//     return schema
+// }

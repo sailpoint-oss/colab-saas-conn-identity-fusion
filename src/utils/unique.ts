@@ -1,7 +1,7 @@
 import { AccountSchema, ConnectorError, ConnectorErrorType, logger } from '@sailpoint/connector-sdk'
 import { Account, IdentityDocument, Source } from 'sailpoint-api-client'
 import velocityjs from 'velocityjs'
-import { buildAccountAttributesObject, combineArrays, datedMessage, lm, refreshAccount } from '.'
+import { buildAccountAttributesObject, combineArrays, datedMessage, lm } from '.'
 import { transliterate } from 'transliteration'
 import { Config } from '../model/config'
 import { UniqueAccount } from '../model/account'
@@ -103,40 +103,40 @@ export const buildUniqueAccount = async (
     return uniqueAccount
 }
 
-export const buildUniqueAccountFromID = async (
-    id: string,
-    schema: AccountSchema,
-    source: Source,
-    identities: IdentityDocument[],
-    config: Config,
-    client: SDKClient
-): Promise<UniqueAccount> => {
-    const c = 'buildUniqueAccountFromID'
-    logger.debug(lm(`Fetching original account`, c, 1))
-    const account = await client.getAccountBySourceAndNativeIdentity(source.id!, id)
-    const sourceAccounts: Account[] = []
-    if (account) {
-        const identity = await client.getIdentity(account.identityId!)
-        const accounts = await client.getAccountsByIdentity(identity!.id!)
-        const correlatedAccounts = accounts
-            .filter((x) => config.sources.includes(x.sourceName!))
-            .map((x) => x.id as string)
-        account.attributes!.accounts = combineArrays(correlatedAccounts, account.attributes!.accounts)
+// export const buildUniqueAccountFromID = async (
+//     id: string,
+//     schema: AccountSchema,
+//     source: Source,
+//     identities: IdentityDocument[],
+//     config: Config,
+//     client: SDKClient
+// ): Promise<UniqueAccount> => {
+//     const c = 'buildUniqueAccountFromID'
+//     logger.debug(lm(`Fetching original account`, c, 1))
+//     const account = await client.getAccountBySourceAndNativeIdentity(source.id!, id)
+//     const sourceAccounts: Account[] = []
+//     if (account) {
+//         const identity = await client.getIdentity(account.identityId!)
+//         const accounts = await client.getAccountsByIdentity(identity!.id!)
+//         const correlatedAccounts = accounts
+//             .filter((x) => config.sources.includes(x.sourceName!))
+//             .map((x) => x.id as string)
+//         account.attributes!.accounts = combineArrays(correlatedAccounts, account.attributes!.accounts)
 
-        for (const acc of account.attributes!.accounts) {
-            logger.debug(lm(`Looking for ${acc} account`, c, 1))
-            const response = await client.getAccount(acc)
-            if (response) {
-                logger.debug(lm(`Found linked account ${response.name} (${response.sourceName})`, c, 1))
-                sourceAccounts.push(response)
-            } else {
-                logger.error(lm(`Unable to find account ID ${acc}`, c, 1))
-            }
-        }
+//         for (const acc of account.attributes!.accounts) {
+//             logger.debug(lm(`Looking for ${acc} account`, c, 1))
+//             const response = await client.getAccount(acc)
+//             if (response) {
+//                 logger.debug(lm(`Found linked account ${response.name} (${response.sourceName})`, c, 1))
+//                 sourceAccounts.push(response)
+//             } else {
+//                 logger.error(lm(`Unable to find account ID ${acc}`, c, 1))
+//             }
+//         }
 
-        const uniqueAccount = await refreshAccount(account, sourceAccounts, schema, identities, config, client)
-        return uniqueAccount
-    } else {
-        throw new ConnectorError('Account not found', ConnectorErrorType.NotFound)
-    }
-}
+//         const uniqueAccount = await refreshAccount(account, sourceAccounts, schema, identities, config, client)
+//         return uniqueAccount
+//     } else {
+//         throw new ConnectorError('Account not found', ConnectorErrorType.NotFound)
+//     }
+// }

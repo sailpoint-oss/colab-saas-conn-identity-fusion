@@ -13,7 +13,7 @@ export const findIdenticalMatch = (
     }[]
 ): IdentityDocument | undefined => {
     let match: IdentityDocument | undefined
-    const accountAttributes = buildAccountAttributesObject(account, mergingMap)
+    const accountAttributes = buildAccountAttributesObject(account, mergingMap, true)
     const accountStringAttributes = JSON.stringify(accountAttributes)
     const candidatesAttributes = candidates.map((x) => buildIdentityAttributesObject(x, mergingMap))
     const candidatesStringAttributes = candidatesAttributes.map((x) => JSON.stringify(x))
@@ -38,7 +38,7 @@ export const findSimilarMatches = (
     globalScore: boolean
 ): { identity: IdentityDocument; score: Map<string, string> }[] => {
     const similarMatches: { identity: IdentityDocument; score: Map<string, string> }[] = []
-    const accountAttributes = buildAccountAttributesObject(account, mergingMap)
+    const accountAttributes = buildAccountAttributesObject(account, mergingMap, true)
     const length = Object.keys(accountAttributes).length
 
     candidates: for (const candidate of candidates) {

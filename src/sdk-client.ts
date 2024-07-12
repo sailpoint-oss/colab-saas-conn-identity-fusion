@@ -39,6 +39,7 @@ import {
     AccountsApiListAccountsRequest,
     IdentityDocument,
     JsonPatchOperation,
+    SearchDocument,
     Transform,
     TransformsApi,
 } from 'sailpoint-api-client/dist/v3'
@@ -523,5 +524,20 @@ export class SDKClient {
         const testAttribute = attributes?.find((x) => x.name === 'uid')
 
         return testAttribute && testAttribute.value ? testAttribute.value.toString() : undefined
+    }
+
+    async getLatestAccountAggregation(sourceName: string): Promise<SearchDocument | undefined> {
+        const api = new SearchApi(this.config)
+
+        const search: Search = {
+            indices: ['events'],
+            query: {
+                query: `operation:AGGREGATE AND status:PASSED AND objects:ACCOUNT AND target.name.exact:"${sourceName} [source]"`,
+            },
+            sort: ['-created'],
+        }
+        const response = await api.searchPost({ search, limit: 1 })
+
+        return response.data.length === 0 ? undefined : response.data[0]
     }
 }

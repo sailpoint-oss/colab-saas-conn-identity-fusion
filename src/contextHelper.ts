@@ -294,78 +294,86 @@ export class ContextHelper {
             )
             sourceAccounts = sourceAccounts.concat(accounts)
         }
+
+        const lastConfigChange = new Date(this.source!.modified!).getTime()
+        const lastModified = new Date(account.modified!).getTime()
+        const newSourceData = sourceAccounts.find((x) => new Date(x.modified!).getTime() > lastModified) ? true : false
+        const needsRefresh = newSourceData || lastModified < lastConfigChange
+
         if (sourceAccounts.length === 0) sourceAccounts.push(account)
 
         try {
-            logger.debug(lm(`Refreshing ${account.attributes!.uniqueID} account`, c, 1))
             const schema = await this.getSchema()
             const attributes = account.attributes
+            if (needsRefresh) {
+                logger.debug(lm(`Refreshing ${account.attributes!.uniqueID} account`, c, 1))
 
-            for (const attrDef of schema.attributes) {
-                if (!reservedAttributes.includes(attrDef.name)) {
-                    const attrConf = this.config.merging_map.find((x) => x.identity === attrDef.name)
-                    const attributeMerge = attrConf?.attributeMerge || this.config.attributeMerge
-                    let firstSource = true
-                    for (const sourceAccount of sourceAccounts) {
-                        let value: any
-                        if (attrConf) {
-                            for (const accountAttr of attrConf.account) {
-                                if (!sourceAccount.attributes) logger.warn(sourceAccount)
-                                value = sourceAccount.attributes![accountAttr]
-                                if (value) break
+                for (const attrDef of schema.attributes) {
+                    if (!reservedAttributes.includes(attrDef.name)) {
+                        const attrConf = this.config.merging_map.find((x) => x.identity === attrDef.name)
+                        const attributeMerge = attrConf?.attributeMerge || this.config.attributeMerge
+                        let firstSource = true
+                        for (const sourceAccount of sourceAccounts) {
+                            let value: any
+                            if (attrConf) {
+                                for (const accountAttr of attrConf.account) {
+                                    if (!sourceAccount.attributes) logger.warn(sourceAccount)
+                                    value = sourceAccount.attributes![accountAttr]
+                                    if (value) break
+                                }
+                            } else {
+                                value = sourceAccount.attributes![attrDef.name]
                             }
-                        } else {
-                            value = sourceAccount.attributes![attrDef.name]
-                        }
-                        if (value) {
-                            let lst: string[]
-                            switch (attributeMerge) {
-                                case 'multi':
-                                    if (firstSource) {
-                                        lst = [].concat(value)
-                                    } else {
-                                        let previousList: string[] = [].concat(attributes![attrDef.name])
-                                        if (previousList.length === 0) {
+                            if (value) {
+                                let lst: string[]
+                                switch (attributeMerge) {
+                                    case 'multi':
+                                        if (firstSource) {
                                             lst = [].concat(value)
-                                        } else if (previousList.length > 1) {
-                                            lst = [...previousList, value]
                                         } else {
-                                            lst = [...attrSplit(previousList[0]), value]
+                                            let previousList: string[] = [].concat(attributes![attrDef.name])
+                                            if (previousList.length === 0) {
+                                                lst = [].concat(value)
+                                            } else if (previousList.length > 1) {
+                                                lst = [...previousList, value]
+                                            } else {
+                                                lst = [...attrSplit(previousList[0]), value]
+                                            }
                                         }
-                                    }
-                                    attributes![attrDef.name] = Array.from(new Set(lst))
-                                    break
+                                        attributes![attrDef.name] = Array.from(new Set(lst))
+                                        break
 
-                                case 'concatenate':
-                                    if (firstSource) {
-                                        lst = [].concat(value)
-                                    } else {
-                                        lst = []
-                                        let previousList: string[] = [].concat(attributes![attrDef.name])
-                                        for (const item of previousList) {
-                                            lst = lst.concat(attrSplit(item))
+                                    case 'concatenate':
+                                        if (firstSource) {
+                                            lst = [].concat(value)
+                                        } else {
+                                            lst = []
+                                            let previousList: string[] = [].concat(attributes![attrDef.name])
+                                            for (const item of previousList) {
+                                                lst = lst.concat(attrSplit(item))
+                                            }
+                                            lst = lst.concat(attrSplit(value))
                                         }
-                                        lst = lst.concat(attrSplit(value))
-                                    }
-                                    attributes![attrDef.name] = attrConcat(lst)
-                                    break
-                                case 'first':
-                                    if (firstSource) {
-                                        attributes![attrDef.name] = value
-                                    }
-                                    break
+                                        attributes![attrDef.name] = attrConcat(lst)
+                                        break
+                                    case 'first':
+                                        if (firstSource) {
+                                            attributes![attrDef.name] = value
+                                        }
+                                        break
 
-                                case 'source':
-                                    const source = attrConf?.source
-                                    if (sourceAccount.sourceName === source) {
-                                        attributes![attrDef.name] = value
-                                    }
-                                    break
-                                default:
-                                    break
+                                    case 'source':
+                                        const source = attrConf?.source
+                                        if (sourceAccount.sourceName === source) {
+                                            attributes![attrDef.name] = value
+                                        }
+                                        break
+                                    default:
+                                        break
+                                }
                             }
+                            firstSource = false
                         }
-                        firstSource = false
                     }
                 }
             }
@@ -429,17 +437,19 @@ export class ContextHelper {
 
         uniqueID = await buildUniqueID(account, this.ids, this.config)
 
+        const uniqueAccount: Account = { ...account }
+
         if (status !== 'reviewer') {
             uniqueID = await buildUniqueID(account, this.ids, this.config)
+            uniqueAccount.attributes!.accounts = [account.id]
         } else {
+            uniqueAccount.attributes!.accounts = []
             logger.debug(lm(`Taking identity uid as unique ID`, c, 1))
             const identity = this.identities.find((x) => x.id === account.identityId) as IdentityDocument
             uniqueID = identity?.attributes!.uid
         }
 
-        const uniqueAccount: Account = { ...account }
         uniqueAccount.attributes!.uniqueID = uniqueID
-        uniqueAccount.attributes!.accounts = [account.id]
         uniqueAccount.attributes!.status = [status]
         uniqueAccount.attributes!.reviews = []
 

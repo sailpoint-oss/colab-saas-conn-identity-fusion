@@ -316,7 +316,7 @@ export const processUncorrelatedAccount = async (
             logger.debug(lm(`Similar matches found`, c, 1))
             const formName = getFormName(source.name, uncorrelatedAccount)
             const formOwner = { id: source.owner.id, type: source.owner.type }
-            const accountAttributes = buildAccountAttributesObject(uncorrelatedAccount, config.merging_map)
+            const accountAttributes = buildAccountAttributesObject(uncorrelatedAccount, config.merging_map, true)
             uncorrelatedAccount.attributes = { ...uncorrelatedAccount.attributes, ...accountAttributes }
             uncorrelatedAccount = normalizeAccountAttributes(uncorrelatedAccount, config.merging_map)
             uniqueForm = new UniqueForm(
@@ -499,7 +499,8 @@ export const buildAccountAttributesObject = (
         account: string[]
         identity: string
         uidOnly: boolean
-    }[]
+    }[],
+    onlyMerging?: boolean
 ): {
     [key: string]: any
 } => {
@@ -507,7 +508,19 @@ export const buildAccountAttributesObject = (
         [key: string]: any
     } = {}
 
-    for (const { identity: key, account: values } of mergingMap.filter((x) => x.uidOnly === false)) {
+    let maps: {
+        account: string[]
+        identity: string
+        uidOnly: boolean
+    }[]
+
+    if (onlyMerging) {
+        maps = mergingMap.filter((x) => x.uidOnly === false)
+    } else {
+        maps = mergingMap
+    }
+
+    for (const { identity: key, account: values } of maps) {
         for (const value of values.reverse()) {
             const v = account.attributes![value]
             if (v) {

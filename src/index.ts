@@ -20,6 +20,7 @@ import { ContextHelper } from './contextHelper'
 import { PROCESSINGWAIT } from './constants'
 import { statuses } from './data/status'
 import { Status } from './model/status'
+import { UniqueForm } from './model/form'
 
 // Connector must be exported as module property named connector
 export const connector = async () => {
@@ -287,6 +288,7 @@ export const connector = async () => {
                                 } else {
                                     throw new Error(`Unable to find base account for reviewer ID ${reviewerID}`)
                                 }
+                                await ctx.createUniqueForm({} as UniqueForm)
                             } catch (e) {
                                 ctx.handleError(e)
                             }

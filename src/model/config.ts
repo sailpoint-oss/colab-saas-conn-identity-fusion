@@ -49,6 +49,5 @@ export interface Config {
     uid_template: string
     version: number
     reset: boolean
-    includeExisting: boolean
     getScore: (attribute?: string) => number
 }

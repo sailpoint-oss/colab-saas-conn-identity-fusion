@@ -7,6 +7,7 @@
         "std:account:enable",
         "std:account:disable",
         "std:account:create",
+        "std:account:update",
         "std:account:discover-schema",
         "std:entitlement:list"
     ],
@@ -78,12 +79,6 @@
                                     "value": "concatenate"
                                 }
                             ]
-                        },
-                        {
-                            "key": "includeExisting",
-                            "label": "Include existing identities?",
-                            "type": "checkbox",
-                            "required": false
                         },
                         {
                             "key": "deleteEmpty",
@@ -328,13 +323,22 @@
                 "multi": true
             },
             {
-                "name": "status",
-                "description": "Status",
+                "name": "statuses",
+                "description": "Statuses",
                 "type": "string",
                 "multi": true,
                 "entitlement": true,
                 "managed": false,
                 "schemaObjectType": "status"
+            },
+            {
+                "name": "actions",
+                "description": "Actions",
+                "type": "string",
+                "multi": true,
+                "entitlement": true,
+                "managed": true,
+                "schemaObjectType": "action"
             },
             {
                 "name": "accounts",
@@ -355,9 +359,36 @@
     "entitlementSchemas": [
         {
             "type": "status",
-            "identityAttribute": "name",
+            "identityAttribute": "id",
             "displayAttribute": "name",
             "attributes": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "description": "id"
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "description": "name"
+                },
+                {
+                    "name": "description",
+                    "type": "string",
+                    "description": "description"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "identityAttribute": "id",
+            "displayAttribute": "name",
+            "attributes": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "description": "id"
+                },
                 {
                     "name": "name",
                     "type": "string",

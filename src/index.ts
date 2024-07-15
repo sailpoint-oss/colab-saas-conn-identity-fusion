@@ -1,10 +1,12 @@
 import {
     ConnectorError,
+    ConnectorErrorType,
     StdAccountDisableHandler,
     StdAccountDiscoverSchemaHandler,
     StdAccountEnableHandler,
     StdAccountListHandler,
     StdAccountReadHandler,
+    StdAccountUpdateHandler,
     StdEntitlementListHandler,
     StdEntitlementListOutput,
     StdTestConnectionHandler,
@@ -18,9 +20,8 @@ import { buildReviewFromFormInstance, datedMessage, getAccountByIdentity, getFor
 
 import { ContextHelper } from './contextHelper'
 import { PROCESSINGWAIT } from './constants'
-import { statuses } from './data/status'
-import { Status } from './model/status'
 import { UniqueForm } from './model/form'
+import { UniqueAccount } from './model/account'
 
 // Connector must be exported as module property named connector
 export const connector = async () => {
@@ -43,13 +44,6 @@ export const connector = async () => {
 
         if (sources.length < config.sources.length) {
             throw new ConnectorError('Unable to find all sources. Please check your configuration')
-        }
-
-        if (config.merging_isEnabled) {
-            const reviewers = ctx.listAllReviewerIDs()
-            if (reviewers.length === 0) {
-                throw new ConnectorError('Unable to find any reviewer. Please check your configuration')
-            }
         }
 
         logger.info('Test successful!')
@@ -159,23 +153,21 @@ export const connector = async () => {
             }
 
             //PROCESS EXISTING IDENTITIES/CREATE BASELINE
-            if (config.includeExisting) {
-                logger.info('Processing existing identities.')
-                const currentIdentityIDs = ctx.listCurrentIdentityIDs()
-                //Process correlated accounts not processed yet
-                const correlatedAccounts = pendingAccounts.filter(
-                    (x) => x.uncorrelated === false && !currentIdentityIDs.includes(x.identityId!)
-                )
-                for (const correlatedAccount of correlatedAccounts) {
-                    try {
-                        const message = 'Baseline account'
-                        const uniqueAccount = await ctx.buildUniqueAccount(correlatedAccount, 'baseline', message)
-                    } catch (e) {
-                        ctx.handleError(e)
-                    }
+            logger.info('Processing existing identities.')
+            const currentIdentityIDs = ctx.listCurrentIdentityIDs()
+            //Process correlated accounts not processed yet
+            const correlatedAccounts = pendingAccounts.filter(
+                (x) => x.uncorrelated === false && !currentIdentityIDs.includes(x.identityId!)
+            )
+            for (const correlatedAccount of correlatedAccounts) {
+                try {
+                    const message = 'Baseline account'
+                    const uniqueAccount = await ctx.buildUniqueAccount(correlatedAccount, 'baseline', message)
+                } catch (e) {
+                    ctx.handleError(e)
                 }
-                pendingAccounts = pendingAccounts.filter((x) => x.uncorrelated === true)
             }
+            pendingAccounts = pendingAccounts.filter((x) => x.uncorrelated === true)
 
             //CREATE BASELINE
             if (ctx.isFirstRun()) {
@@ -196,23 +188,11 @@ export const connector = async () => {
             logger.info('Processing uncorrelated accounts.')
             for (const uncorrelatedAccount of pendingAccounts) {
                 try {
-                    const { processedAccount, uniqueForm } = await ctx.processUncorrelatedAccount(uncorrelatedAccount)
-                    if (processedAccount) {
-                        const message = `No matching identity found`
-                        const uniqueAccount = await ctx.buildUniqueAccount(uncorrelatedAccount, 'unmatched', message)
-                    } else if (uniqueForm) {
-                        if (await ctx.isMergingEnabled()) {
-                            logger.debug(`Creating merging form`)
-                            const form = await ctx.createUniqueForm(uniqueForm)
-                            ctx.addForm(form)
-                        } else {
-                            const message = `Potential matching identity found but no reviewers configured`
-                            const uniqueAccount = await ctx.buildUniqueAccount(
-                                uncorrelatedAccount,
-                                'unmatched',
-                                message
-                            )
-                        }
+                    const uniqueForm = await ctx.processUncorrelatedAccount(uncorrelatedAccount)
+                    if (uniqueForm) {
+                        logger.debug(`Creating merging form`)
+                        const form = await ctx.createUniqueForm(uniqueForm)
+                        ctx.addForm(form)
                     }
                 } catch (e) {
                     ctx.handleError(e)
@@ -301,7 +281,6 @@ export const connector = async () => {
             }
 
             //BUILD RESULTING ACCOUNTS
-
             logger.info('Sending accounts.')
             for await (const account of ctx.listUniqueAccounts()) {
                 logger.info(account)
@@ -325,7 +304,97 @@ export const connector = async () => {
         if (input.schema) {
             ctx.loadSchema(input.schema)
         }
+        //Keepalive
+        const interval = setInterval(() => {
+            res.keepAlive()
+        }, PROCESSINGWAIT)
+
+        try {
+            const account = await ctx.buildUniqueAccountFromID(input.identity)
+            logger.info(account)
+            res.send(account)
+        } catch (error) {
+            logger.error(error)
+        } finally {
+            clearInterval(interval)
+        }
+    }
+
+    const stdAccountUpdate: StdAccountUpdateHandler = async (context, input, res) => {
+        await opLog(config, input)
+
+        logger.info(`Updating ${input.identity} account.`)
+
+        if (config.reset) return
+
+        await ctx.init(true)
+        if (input.schema) {
+            ctx.loadSchema(input.schema)
+        }
         const account = await ctx.buildUniqueAccountFromID(input.identity)
+        let message: string
+        try {
+            if (input.changes) {
+                for (const change of input.changes) {
+                    switch (change.attribute) {
+                        case 'actions':
+                            switch (change.value) {
+                                case 'reset':
+                                    const uniqueID = await ctx.buildUniqueID(input.identity)
+                                    account.attributes.uniqueID = uniqueID
+                                    const schema = await ctx.getSchema()
+                                    if (schema) {
+                                        account.identity = (
+                                            account.attributes[schema.identityAttribute]
+                                                ? account.attributes[schema.identityAttribute]
+                                                : account.attributes.uuid
+                                        ) as string
+                                        account.uuid = (
+                                            account.attributes[schema.displayAttribute]
+                                                ? (account.attributes[schema.displayAttribute] as string)
+                                                : account.attributes.uuid
+                                        ) as string
+                                    } else {
+                                        account.identity = account.attributes.uuid as string
+                                        account.uuid = account.attributes.uuid as string
+                                    }
+                                    break
+
+                                case 'edit':
+                                    break
+                                case 'report':
+                                    break
+                                default:
+                                    const sourceIDs = ctx.listSources().map((x) => x.id)
+                                    if (sourceIDs.includes(change.value)) {
+                                        const statuses = account.attributes.statuses as string[]
+                                        statuses.push(change.value)
+                                    } else {
+                                        message = `Source ID ${change.value} is not a currently configured source.`
+                                        throw new ConnectorError(message, ConnectorErrorType.Generic)
+                                    }
+                                    break
+                            }
+                            break
+                        case 'statuses':
+                            message =
+                                'Status entitlements are not designed for assigment. Use action entitlements instead.'
+                            throw new ConnectorError(message, ConnectorErrorType.Generic)
+                        default:
+                            message = 'Operation not supported.'
+                            throw new ConnectorError(message, ConnectorErrorType.Generic)
+                    }
+                }
+                //Need to investigate about std:account:update operations without changes but adding this for the moment
+            } else if ('attributes' in input) {
+                logger.warn(
+                    'No changes detected in account update. Please report unless you used attribute sync which is not supported.'
+                )
+            }
+        } catch (e) {
+            ctx.handleError(e)
+        }
+
         logger.info(account)
         res.send(account)
     }
@@ -347,20 +416,19 @@ export const connector = async () => {
             res.keepAlive()
         }, PROCESSINGWAIT)
 
-        const account = ctx.buildUniqueAccountFromID(input.identity)
-        account
-            .then((result) => {
-                logger.info(result)
-                res.send(result)
-            })
-            .catch((error) => {
-                logger.error(error)
-            })
-            .finally(() => {
-                clearInterval(interval)
-            })
+        try {
+            const account = await ctx.buildUniqueAccountFromID(input.identity)
 
-        await account
+            account.disabled = false
+            account.attributes.IIQDisabled = false
+
+            logger.info(account)
+            res.send(account)
+        } catch (error) {
+            logger.error(error)
+        } finally {
+            clearInterval(interval)
+        }
     }
 
     const stdAccountDisable: StdAccountDisableHandler = async (context, input, res) => {
@@ -370,7 +438,7 @@ export const connector = async () => {
 
         if (config.reset) return
 
-        await ctx.init()
+        await ctx.init(true)
         if (input.schema) {
             ctx.loadSchema(input.schema)
         }
@@ -380,40 +448,19 @@ export const connector = async () => {
             res.keepAlive()
         }, PROCESSINGWAIT)
 
-        const uniqueID = await ctx.buildUniqueID(input.identity)
-        const account = ctx.buildUniqueAccountFromID(input.identity)
-        const schema = await ctx.getSchema()
-        account
-            .then((result) => {
-                result.disabled = true
-                result.attributes.IIQDisabled = true
-                result.attributes.uniqueID = uniqueID
-                if (schema) {
-                    result.identity = (
-                        result.attributes[schema.identityAttribute]
-                            ? result.attributes[schema.identityAttribute]
-                            : result.attributes.uuid
-                    ) as string
-                    result.uuid = (
-                        result.attributes[schema.displayAttribute]
-                            ? (result.attributes[schema.displayAttribute] as string)
-                            : result.attributes.uuid
-                    ) as string
-                } else {
-                    result.identity = result.attributes.uuid as string
-                    result.uuid = result.attributes.uuid as string
-                }
-                logger.info(result)
-                res.send(result)
-            })
-            .catch((error) => {
-                logger.error(error)
-            })
-            .finally(() => {
-                clearInterval(interval)
-            })
+        try {
+            const account = await ctx.buildUniqueAccountFromID(input.identity)
 
-        await account
+            account.disabled = true
+            account.attributes.IIQDisabled = true
+
+            logger.info(account)
+            res.send(account)
+        } catch (error) {
+            logger.error(error)
+        } finally {
+            clearInterval(interval)
+        }
     }
 
     const stdEntitlementList: StdEntitlementListHandler = async (context, input, res) => {
@@ -423,9 +470,14 @@ export const connector = async () => {
         try {
             logger.info(input)
             let entitlements: StdEntitlementListOutput[]
+            const sources = ctx.listSources()
             switch (input.type) {
                 case 'status':
-                    entitlements = statuses.map((x) => new Status(x))
+                    entitlements = ctx.buildStatusEntitlements()
+                    break
+
+                case 'action':
+                    entitlements = ctx.buildActionEntitlements()
                     break
 
                 default:
@@ -461,6 +513,7 @@ export const connector = async () => {
         .stdTestConnection(stdTest)
         .stdAccountList(stdAccountList)
         .stdAccountRead(stdAccountRead)
+        .stdAccountUpdate(stdAccountUpdate)
         .stdAccountEnable(stdAccountEnable)
         .stdAccountDisable(stdAccountDisable)
         .stdEntitlementList(stdEntitlementList)

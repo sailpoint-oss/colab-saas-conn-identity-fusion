@@ -1,11 +1,9 @@
-import { AccountSchema, ConnectorError, ConnectorErrorType, logger } from '@sailpoint/connector-sdk'
-import { Account, IdentityDocument, Source } from 'sailpoint-api-client'
+import { logger } from '@sailpoint/connector-sdk'
+import { Account } from 'sailpoint-api-client'
 import velocityjs from 'velocityjs'
-import { buildAccountAttributesObject, combineArrays, datedMessage, lm } from '.'
+import { buildAccountAttributesObject, lm } from '.'
 import { transliterate } from 'transliteration'
 import { Config } from '../model/config'
-import { UniqueAccount } from '../model/account'
-import { SDKClient } from '../sdk-client'
 
 export const buildUniqueID = async (account: Account, currentIDs: string[], config: Config): Promise<string> => {
     const c = 'buildUniqueID'

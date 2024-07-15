@@ -24,6 +24,7 @@ import {
 import {
     attrConcat,
     attrSplit,
+    buildAccountAttributesObject,
     combineArrays,
     composeErrorMessage,
     datedMessage,
@@ -33,6 +34,7 @@ import {
     getOwnerFromSource,
     lm,
     md,
+    normalizeAccountAttributes,
     processUncorrelatedAccount,
     sleep,
     updateAccountLinks,
@@ -45,6 +47,11 @@ import { UniqueAccount } from './model/account'
 import { AxiosError } from 'axios'
 import { v4 as uuidv4 } from 'uuid'
 import { EmailWorkflow } from './model/emailWorkflow'
+import { statuses } from './data/status'
+import { Status, StatusSource } from './model/status'
+import { Action, ActionSource } from './model/action'
+import { actions } from './data/action'
+import { findIdenticalMatch, findSimilarMatches } from './utils/matching'
 
 export class ContextHelper {
     private c: string = 'ContextHelper'
@@ -109,8 +116,6 @@ export class ContextHelper {
         const wfName = `${WORKFLOW_NAME} (${this.config!.cloudDisplayName})`
         this.emailer = await this.getEmailWorkflow(wfName, owner)
 
-        this.reviewerIDs = await this.buildReviewersMap()
-
         if (!skipData) {
             this.identities = await this.listIdentities()
             this.accounts = await this.listAccounts()
@@ -135,6 +140,9 @@ export class ContextHelper {
             this.forms = []
             this.formInstances = []
         }
+
+        this.reviewerIDs = await this.buildReviewersMap()
+
         this.errors = []
     }
 
@@ -430,7 +438,7 @@ export class ContextHelper {
         }
     }
 
-    async buildUniqueAccount(account: Account, status: string, msg: string): Promise<Account> {
+    async buildUniqueAccount(account: Account, status: string | string[], msg: string): Promise<Account> {
         const c = 'buildUniqueAccount'
         logger.debug(lm(`Processing ${account.name} (${account.id})`, c, 1))
         let uniqueID: string
@@ -450,7 +458,7 @@ export class ContextHelper {
         }
 
         uniqueAccount.attributes!.uniqueID = uniqueID
-        uniqueAccount.attributes!.status = [status]
+        uniqueAccount.attributes!.statuses = [status]
         uniqueAccount.attributes!.reviews = []
 
         if (msg) {
@@ -599,21 +607,91 @@ export class ContextHelper {
         return this.config.merging_isEnabled === true && this.listAllReviewerIDs().length > 0
     }
 
-    async processUncorrelatedAccount(
-        uncorrelatedAccount: Account
-    ): Promise<{ processedAccount: Account | undefined; uniqueForm: UniqueForm | undefined }> {
-        const deduplicate = await this.isMergingEnabled()
+    async processUncorrelatedAccount(uncorrelatedAccount: Account): Promise<UniqueForm | undefined> {
+        const c = 'processUncorrelatedAccount'
 
-        const response = await processUncorrelatedAccount(
-            uncorrelatedAccount,
-            this.accounts,
-            this.currentIdentities,
-            this.source!,
-            this.config,
-            deduplicate
-        )
+        let account: Account | undefined
+        let uniqueAccount: Account | undefined
+        let uniqueForm: UniqueForm | undefined
+        let status: string
+        let message = ''
+        const merging = await this.isMergingEnabled()
 
-        return response
+        if (merging) {
+            logger.debug(
+                lm(`Checking identical match for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id}).`, c, 1)
+            )
+            const normalizedAccount = normalizeAccountAttributes(uncorrelatedAccount, this.config.merging_map)
+            const identicalMatch = findIdenticalMatch(
+                normalizedAccount,
+                this.currentIdentities,
+                this.config.merging_map
+            )
+            if (identicalMatch) {
+                logger.debug(lm(`Identical match found.`, c, 1))
+                uniqueAccount = this.accounts.find((x) => x.identityId === identicalMatch.id) as Account
+                message = datedMessage('Identical match found.', uncorrelatedAccount)
+                status = 'auto'
+                uniqueAccount.attributes!.status.push(status)
+                uniqueAccount.attributes!.accounts.push(uncorrelatedAccount.id)
+                uniqueAccount.attributes!.history.push(message)
+                // Check if similar match exists
+            } else {
+                let similarMatches: {
+                    identity: IdentityDocument
+                    score: Map<string, string>
+                }[] = []
+                logger.debug(
+                    lm(`Checking similar matches for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id})`, c, 1)
+                )
+
+                similarMatches = findSimilarMatches(
+                    uncorrelatedAccount,
+                    currentIdentities,
+                    config.merging_map,
+                    config.getScore,
+                    config.global_merging_score
+                )
+
+                if (similarMatches.length > 0) {
+                    logger.debug(lm(`Similar matches found`, c, 1))
+                    const formName = getFormName(this.source!.name, uncorrelatedAccount)
+                    const formOwner = { id: this.source!.owner.id, type: this.source!.owner.type }
+                    const accountAttributes = buildAccountAttributesObject(
+                        uncorrelatedAccount,
+                        this.config.merging_map,
+                        true
+                    )
+                    uncorrelatedAccount.attributes = { ...uncorrelatedAccount.attributes, ...accountAttributes }
+                    uncorrelatedAccount = normalizeAccountAttributes(uncorrelatedAccount, this.config.merging_map)
+                    uniqueForm = new UniqueForm(
+                        formName,
+                        formOwner,
+                        uncorrelatedAccount,
+                        similarMatches,
+                        this.config.merging_attributes,
+                        this.config.getScore
+                    )
+                } else {
+                    // No matching existing identity found
+                    logger.debug(lm(`No matching identity found. Creating new unique account.`, c, 1))
+                    message = `No matching identity found`
+                    status = 'unmatched'
+                    account = uncorrelatedAccount
+                }
+            }
+        } else {
+            logger.debug(lm(`Skipping merging for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id}).`, c, 1))
+            message = `Identity merging not activated`
+            status = 'unmatched'
+            account = uncorrelatedAccount
+        }
+
+        if (account) {
+            uniqueAccount = await this.buildUniqueAccount(account, 'unmatched', message)
+        }
+
+        return uniqueForm
     }
 
     async sendEmail(email: Email) {
@@ -669,18 +747,14 @@ export class ContextHelper {
 
     private async buildReviewersMap(): Promise<Map<string, string[]>> {
         const reviewersMap = new Map<string, string[]>()
-        let defaultReviewerIDs: string[] = []
-        if (!this.config.merging_reviewerIsSourceOwner) {
-            defaultReviewerIDs = await this.fetchReviewerIDs(this.source!)
-        }
+        const sourceIDs = this.sources.map((x) => x.id)
 
         for (const source of this.sources) {
-            if (this.config.merging_reviewerIsSourceOwner) {
-                const reviewerIDs = await this.fetchReviewerIDs(source)
-                reviewersMap.set(source.name, reviewerIDs)
-            } else {
-                reviewersMap.set(source.name, defaultReviewerIDs)
-            }
+            const sourceID = source.id!
+            const reviewers = this.accounts.filter((x) => x.attributes!.statuses.includes(sourceID))
+            const reviewerIDs = reviewers.map((x) => x.id!)
+            // reviewersMap.set(sourceID, reviewerIDs)
+            reviewersMap.set(source.name, reviewerIDs)
         }
 
         return reviewersMap
@@ -886,6 +960,32 @@ export class ContextHelper {
         }
 
         return schema
+    }
+
+    buildStatusEntitlements(): Status[] {
+        const statusEntitlements = statuses.map((x) => new Status(x))
+        const sourceInput: StatusSource[] = this.sources.map(({ id, name }) => ({
+            id: id!,
+            name: `${name} source reviewer`,
+            description: `Designated reviewer for source ${name} potential duplicated identities`,
+        }))
+        const sourceEntitlements = sourceInput.map((x) => new Status(x))
+        const entitlements = [...statusEntitlements, ...sourceEntitlements]
+
+        return entitlements
+    }
+
+    buildActionEntitlements(): Action[] {
+        const actionEntitlements = actions.map((x) => new Action(x))
+        const sourceInput: ActionSource[] = this.sources.map(({ id, name }) => ({
+            id: id!,
+            name: `Set ${name} source reviewer`,
+            description: `Set reviewer for source ${name} potential duplicated identities`,
+        }))
+        const sourceEntitlements = sourceInput.map((x) => new Action(x))
+        const entitlements = [...actionEntitlements, ...sourceEntitlements]
+
+        return entitlements
     }
 
     handleError(error: any) {

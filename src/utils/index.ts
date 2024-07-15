@@ -1,34 +1,19 @@
 import {
     Account,
-    AttributeDefinition,
     BaseAccount,
     FormDefinitionInputBeta,
     FormDefinitionResponseBeta,
     FormInstanceResponseBeta,
-    IdentityBeta,
     IdentityDocument,
     OwnerDto,
-    Schema,
     Source,
-    WorkflowBeta,
 } from 'sailpoint-api-client'
-import { SDKClient } from '../sdk-client'
-import { EmailWorkflow } from '../model/emailWorkflow'
-import { AccountSchema, Context, SchemaAttribute, logger } from '@sailpoint/connector-sdk'
-import { Email, ErrorEmail } from '../model/email'
+import { Context, logger } from '@sailpoint/connector-sdk'
 import { Config } from '../model/config'
-import {
-    FORM_NAME,
-    IDENTITYNOTFOUNDRETRIES,
-    IDENTITYNOTFOUNDWAIT,
-    MSDAY,
-    PADDING,
-    reservedAttributes,
-} from '../constants'
+import { FORM_NAME, MSDAY, PADDING } from '../constants'
 import { UniqueForm } from '../model/form'
 import { findIdenticalMatch, findSimilarMatches } from './matching'
 import { AxiosError } from 'axios'
-import { UniqueAccount } from '../model/account'
 
 import MarkdownIt from 'markdown-it'
 
@@ -276,12 +261,13 @@ export const processUncorrelatedAccount = async (
     source: Source,
     config: Config,
     merge: boolean
-): Promise<{ processedAccount: Account | undefined; uniqueForm: UniqueForm | undefined }> => {
+): Promise<{ processedAccount: Account | undefined; uniqueForm: UniqueForm | undefined; status: string }> => {
     // Check if identical match exists
     const c = 'processUncorrelatedAccount'
 
     let processedAccount: Account | undefined
     let uniqueForm: UniqueForm | undefined
+    let status: string
     logger.debug(lm(`Checking identical match for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id}).`, c, 1))
     const normalizedAccount = normalizeAccountAttributes(uncorrelatedAccount, config.merging_map)
     const identicalMatch = findIdenticalMatch(normalizedAccount, currentIdentities, config.merging_map)
@@ -289,7 +275,8 @@ export const processUncorrelatedAccount = async (
         logger.debug(lm(`Identical match found.`, c, 1))
         const account = currentAccounts.find((x) => x.identityId === identicalMatch.id) as Account
         const message = datedMessage('Identical match found.', uncorrelatedAccount)
-        account.attributes!.status.push('auto')
+        status = 'auto'
+        account.attributes!.status.push(status)
         account.attributes!.accounts.push(uncorrelatedAccount.id)
         account.attributes!.history.push(message)
         // Check if similar match exists

@@ -39,9 +39,13 @@ import {
     AccountsApiListAccountsRequest,
     IdentityDocument,
     JsonPatchOperation,
+    ProvisioningPolicyDto,
     SearchDocument,
+    SourcesApiCreateProvisioningPolicyRequest,
+    SourcesApiGetProvisioningPolicyRequest,
     Transform,
     TransformsApi,
+    UsageType,
 } from 'sailpoint-api-client/dist/v3'
 import { URL } from 'url'
 import { logger } from '@sailpoint/connector-sdk'
@@ -93,16 +97,21 @@ export class SDKClient {
         return response.data as IdentityDocument[]
     }
 
-    async getIdentityByUID(uid: string): Promise<IdentityBeta | undefined> {
-        const api = new IdentitiesBetaApi(this.config)
+    async getIdentityByUID(uid: string): Promise<IdentityDocument | undefined> {
+        const api = new SearchApi(this.config)
 
-        const requestParameters: IdentitiesBetaApiListIdentitiesRequest = {
-            filters: `alias eq "${uid}"`,
+        const search: Search = {
+            indices: ['identities'],
+            query: {
+                query: `attributes.uid.exact:"${uid}"`,
+            },
+            includeNested: true,
         }
-        const response = await api.listIdentities(requestParameters)
+
+        const response = await api.searchPost({ search, limit: 1 })
 
         if (response.data.length > 0) {
-            return response.data[0]
+            return response.data[0] as IdentityDocument
         } else {
             return undefined
         }
@@ -252,6 +261,18 @@ export class SDKClient {
         } catch (e) {
             return undefined
         }
+    }
+
+    async getAccountByIdentityID(identityId: string, sourceId: string): Promise<Account | undefined> {
+        const api = new AccountsApi(this.config)
+        const requestParameters: AccountsApiListAccountsRequest = {
+            limit: 1,
+            filters: `identityId eq "${identityId}" and sourceId eq "${sourceId}"`,
+        }
+
+        const response = await api.listAccounts(requestParameters)
+
+        return response.data.length > 0 ? response.data[0] : undefined
     }
 
     // async getIdenticalIdentities(sourceId: string, attributes: object): Promise<IdentityDocument[]> {
@@ -539,5 +560,31 @@ export class SDKClient {
         const response = await api.searchPost({ search, limit: 1 })
 
         return response.data.length === 0 ? undefined : response.data[0]
+    }
+
+    async getProvisioningPolicy(sourceId: string, usageType: UsageType) {
+        const api = new SourcesApi(this.config)
+
+        const requestParameters: SourcesApiGetProvisioningPolicyRequest = {
+            sourceId,
+            usageType,
+        }
+
+        const response = await api.getProvisioningPolicy(requestParameters)
+
+        return response.data
+    }
+
+    async createProvisioningPolicy(sourceId: string, provisioningPolicyDto: ProvisioningPolicyDto) {
+        const api = new SourcesApi(this.config)
+
+        const requestParameters: SourcesApiCreateProvisioningPolicyRequest = {
+            sourceId,
+            provisioningPolicyDto,
+        }
+
+        const response = await api.createProvisioningPolicy(requestParameters)
+
+        return response.data
     }
 }

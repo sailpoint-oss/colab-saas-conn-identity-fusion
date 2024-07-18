@@ -11,8 +11,6 @@ import {
 import { Context, logger } from '@sailpoint/connector-sdk'
 import { Config } from '../model/config'
 import { FORM_NAME, MSDAY, PADDING } from '../constants'
-import { UniqueForm } from '../model/form'
-import { findIdenticalMatch, findSimilarMatches } from './matching'
 import { AxiosError } from 'axios'
 
 import MarkdownIt from 'markdown-it'
@@ -29,6 +27,10 @@ export const sleep = (ms: number) => {
 
 export const capitalizeFirstLetter = (str: string) => {
     return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
+export const replaceArrayItem = (array: any[], item: any) => {
+    array.splice(array.indexOf(item, 1))
 }
 
 export const keepAlive = async (promise: Promise<any>) => {
@@ -66,7 +68,10 @@ export const lm = (message: string, component?: string, indentations?: number): 
 export const attrConcat = (list: string[]): string => {
     const set = new Set(list)
 
-    return [...set].map((x) => `[${x}]`).join(' ')
+    return [...set]
+        .sort()
+        .map((x) => `[${x}]`)
+        .join(' ')
 }
 
 export const attrSplit = (text: string): string[] => {
@@ -123,11 +128,11 @@ export const combineArrays = (a: any[] | undefined, b: any[] | undefined) => {
     return Array.from(new Set([...aArray, ...bArray]))
 }
 
-export const opLog = async (config: any, input: any) => {
+export const opLog = (config: any, input: any) => {
     logger.info('Input:')
-    logger.info(input)
+    logger.info({ input })
     logger.debug('Config:')
-    logger.debug(config)
+    logger.debug({ config })
 }
 
 export const handleError = (error: any, errors: string[]) => {
@@ -253,207 +258,6 @@ export const updateAccountLinks = (account: Account, identities: IdentityDocumen
         account.attributes!.accounts = combineArrays(correlatedAccounts, account.attributes!.accounts)
     }
 }
-
-export const processUncorrelatedAccount = async (
-    uncorrelatedAccount: Account,
-    currentAccounts: Account[],
-    currentIdentities: IdentityDocument[],
-    source: Source,
-    config: Config,
-    merge: boolean
-): Promise<{ processedAccount: Account | undefined; uniqueForm: UniqueForm | undefined; status: string }> => {
-    // Check if identical match exists
-    const c = 'processUncorrelatedAccount'
-
-    let processedAccount: Account | undefined
-    let uniqueForm: UniqueForm | undefined
-    let status: string
-    logger.debug(lm(`Checking identical match for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id}).`, c, 1))
-    const normalizedAccount = normalizeAccountAttributes(uncorrelatedAccount, config.merging_map)
-    const identicalMatch = findIdenticalMatch(normalizedAccount, currentIdentities, config.merging_map)
-    if (identicalMatch) {
-        logger.debug(lm(`Identical match found.`, c, 1))
-        const account = currentAccounts.find((x) => x.identityId === identicalMatch.id) as Account
-        const message = datedMessage('Identical match found.', uncorrelatedAccount)
-        status = 'auto'
-        account.attributes!.status.push(status)
-        account.attributes!.accounts.push(uncorrelatedAccount.id)
-        account.attributes!.history.push(message)
-        // Check if similar match exists
-    } else {
-        let similarMatches: {
-            identity: IdentityDocument
-            score: Map<string, string>
-        }[] = []
-        if (merge) {
-            logger.debug(
-                lm(`Checking similar matches for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id})`, c, 1)
-            )
-
-            similarMatches = findSimilarMatches(
-                uncorrelatedAccount,
-                currentIdentities,
-                config.merging_map,
-                config.getScore,
-                config.global_merging_score
-            )
-        }
-
-        if (similarMatches.length > 0) {
-            logger.debug(lm(`Similar matches found`, c, 1))
-            const formName = getFormName(source.name, uncorrelatedAccount)
-            const formOwner = { id: source.owner.id, type: source.owner.type }
-            const accountAttributes = buildAccountAttributesObject(uncorrelatedAccount, config.merging_map, true)
-            uncorrelatedAccount.attributes = { ...uncorrelatedAccount.attributes, ...accountAttributes }
-            uncorrelatedAccount = normalizeAccountAttributes(uncorrelatedAccount, config.merging_map)
-            uniqueForm = new UniqueForm(
-                formName,
-                formOwner,
-                uncorrelatedAccount,
-                similarMatches,
-                config.merging_attributes,
-                config.getScore
-            )
-        } else {
-            // No matching existing identity found
-            logger.debug(lm(`No matching identity found. Creating new unique account.`, c, 1))
-            processedAccount = uncorrelatedAccount
-        }
-    }
-
-    return { processedAccount, uniqueForm }
-}
-
-// export const refreshAccount = async (
-//     account: Account,
-//     sourceAccounts: Account[],
-//     schema: AccountSchema,
-//     identities: IdentityDocument[],
-//     config: Config,
-//     client: SDKClient
-// ): Promise<UniqueAccount> => {
-//     const c = 'refreshAccount'
-
-//     logger.debug(lm(`Refreshing ${account.attributes!.uniqueID} account`, c, 1))
-//     const attributes = account.attributes
-
-//     for (const attrDef of schema.attributes) {
-//         if (!reservedAttributes.includes(attrDef.name)) {
-//             const attrConf = config.merging_map.find((x) => x.identity === attrDef.name)
-//             const attributeMerge = attrConf?.attributeMerge || config.attributeMerge
-//             let firstSource = true
-//             for (const sourceAccount of sourceAccounts) {
-//                 let value: any
-//                 if (attrConf) {
-//                     for (const accountAttr of attrConf.account) {
-//                         if (!sourceAccount.attributes) logger.warn(sourceAccount)
-//                         value = sourceAccount.attributes![accountAttr]
-//                         if (value) break
-//                     }
-//                 } else {
-//                     value = sourceAccount.attributes![attrDef.name]
-//                 }
-//                 if (value) {
-//                     let lst: string[]
-//                     switch (attributeMerge) {
-//                         case 'multi':
-//                             if (firstSource) {
-//                                 lst = [].concat(value)
-//                             } else {
-//                                 let previousList: string[] = [].concat(attributes![attrDef.name])
-//                                 if (previousList.length === 0) {
-//                                     lst = [].concat(value)
-//                                 } else if (previousList.length > 1) {
-//                                     lst = [...previousList, value]
-//                                 } else {
-//                                     lst = [...attrSplit(previousList[0]), value]
-//                                 }
-//                             }
-//                             attributes![attrDef.name] = Array.from(new Set(lst))
-//                             break
-
-//                         case 'concatenate':
-//                             if (firstSource) {
-//                                 lst = [].concat(value)
-//                             } else {
-//                                 lst = []
-//                                 let previousList: string[] = [].concat(attributes![attrDef.name])
-//                                 for (const item of previousList) {
-//                                     lst = lst.concat(attrSplit(item))
-//                                 }
-//                                 lst = lst.concat(attrSplit(value))
-//                             }
-//                             attributes![attrDef.name] = attrConcat(lst)
-//                             break
-//                         case 'first':
-//                             if (firstSource) {
-//                                 attributes![attrDef.name] = value
-//                             }
-//                             break
-
-//                         case 'source':
-//                             const source = attrConf?.source
-//                             if (sourceAccount.sourceName === source) {
-//                                 attributes![attrDef.name] = value
-//                             }
-//                             break
-//                         default:
-//                             break
-//                     }
-//                 }
-//                 firstSource = false
-//             }
-//         }
-//     }
-
-//     attributes!.status = Array.from(new Set(attributes!.status))
-
-//     if (account.uncorrelated) {
-//         logger.debug(lm(`New account. Needs to be enabled.`, c, 2))
-//     } else {
-//         logger.debug(lm(`Existing account. Enforcing defined correlation.`, c, 1))
-//         let identity: IdentityDocument | IdentityBeta | undefined
-//         let accounts: Account[] | BaseAccount[]
-//         identity = identities.find((x) => x.id === account.identityId) as IdentityDocument
-//         if (!identity) {
-//             let count = 0
-//             let wait = IDENTITYNOTFOUNDWAIT
-//             while (!identity) {
-//                 identity = await client.getIdentity(account.identityId!)
-//                 if (!identity) {
-//                     if (++count > IDENTITYNOTFOUNDRETRIES)
-//                         throw new Error(
-//                             `Identity ${account.identityId} for account ${account.nativeIdentity} not found`
-//                         )
-
-//                     logger.warn(lm(`Identity ID ${account.identityId} not found. Re-trying...`, c, 1))
-//                     await sleep(wait)
-//                     wait = wait + IDENTITYNOTFOUNDWAIT
-//                 }
-//             }
-//             accounts = await client.getAccountsByIdentity(identity!.id!)
-//         } else {
-//             accounts = (identity as IdentityDocument).accounts!
-//         }
-
-//         for (const acc of account.attributes!.accounts as string[]) {
-//             const uid: string = (identity.attributes as any).uid
-//             try {
-//                 if (!accounts.find((x) => x.id === acc)) {
-//                     logger.debug(lm(`Correlating ${acc} account with ${uid}.`, c, 1))
-//                     const response = await client.correlateAccount(identity?.id as string, acc)
-//                 }
-//             } catch (e) {
-//                 logger.error(lm(`Failed to correlate ${acc} account with ${uid}.`, c, 1))
-//                 account.attributes!.accounts = account.attributes!.accounts.filter((x: string) => x !== acc)
-//             }
-//         }
-//     }
-
-//     const uniqueAccount = new UniqueAccount(account, schema)
-
-//     return uniqueAccount
-// }
 
 export const normalizeAccountAttributes = (
     account: Account,

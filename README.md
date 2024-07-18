@@ -103,7 +103,9 @@ In both cases, proxy accounts are generated based on sources configured and othe
 
 -   **history**: chronological history of the operations performed on the account.
 
--   **status**: list of entitlements used as tags to identify the origin of the account.
+-   **statuses**: list of entitlements used as tags to identify the status or origin of the account.
+
+-   **actions**: list of entitlements used as triggers for multiple management actions.
 
 -   **reviews**: list of pending form instances a reviewer must attend to.
 

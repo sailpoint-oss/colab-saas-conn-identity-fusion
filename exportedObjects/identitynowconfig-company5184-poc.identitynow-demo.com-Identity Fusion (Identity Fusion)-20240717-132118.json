@@ -1,0 +1,175 @@
+{
+    "version": 1,
+    "timestamp": "2024-07-17T13:21:21.658839Z",
+    "tenant": "company5184-poc",
+    "description": "Export Job vscode 2024-07-17T13:21:20.692Z",
+    "options": {
+        "excludeTypes": null,
+        "includeTypes": ["IDENTITY_PROFILE"],
+        "objectOptions": {
+            "IDENTITY_PROFILE": {
+                "includedNames": [],
+                "includedIds": ["8553c852283542458defddc50f0f7354"]
+            }
+        }
+    },
+    "objects": [
+        {
+            "version": 1,
+            "self": {
+                "id": "8553c852283542458defddc50f0f7354",
+                "type": "IDENTITY_PROFILE",
+                "name": "Identity Fusion"
+            },
+            "object": {
+                "description": null,
+                "owner": {
+                    "type": "IDENTITY",
+                    "id": "df93e3b617f641128656a76072805733",
+                    "name": "Fernando de los Rios Sanchez"
+                },
+                "priority": 50,
+                "authoritativeSource": {
+                    "type": "SOURCE",
+                    "id": "a5ed2132dde64015b6e115c5fc46594d",
+                    "name": "Identity Fusion"
+                },
+                "identityRefreshRequired": false,
+                "identityCount": 39,
+                "identityAttributeConfig": {
+                    "enabled": true,
+                    "attributeTransforms": [
+                        {
+                            "identityAttributeName": "uid",
+                            "transformDefinition": {
+                                "type": "accountAttribute",
+                                "attributes": {
+                                    "attributeName": "uniqueID",
+                                    "sourceName": "Identity Fusion",
+                                    "sourceId": "a5ed2132dde64015b6e115c5fc46594d"
+                                }
+                            }
+                        },
+                        {
+                            "identityAttributeName": "email",
+                            "transformDefinition": {
+                                "type": "accountAttribute",
+                                "attributes": {
+                                    "attributeName": "email",
+                                    "sourceName": "Identity Fusion",
+                                    "sourceId": "a5ed2132dde64015b6e115c5fc46594d"
+                                }
+                            }
+                        },
+                        {
+                            "identityAttributeName": "lastname",
+                            "transformDefinition": {
+                                "type": "accountAttribute",
+                                "attributes": {
+                                    "attributeName": "lastname",
+                                    "sourceName": "Identity Fusion",
+                                    "sourceId": "a5ed2132dde64015b6e115c5fc46594d"
+                                }
+                            }
+                        },
+                        {
+                            "identityAttributeName": "firstname",
+                            "transformDefinition": {
+                                "type": "accountAttribute",
+                                "attributes": {
+                                    "attributeName": "firstname",
+                                    "sourceName": "Identity Fusion",
+                                    "sourceId": "a5ed2132dde64015b6e115c5fc46594d"
+                                }
+                            }
+                        },
+                        {
+                            "identityAttributeName": "country",
+                            "transformDefinition": {
+                                "type": "accountAttribute",
+                                "attributes": {
+                                    "attributeName": "country",
+                                    "sourceName": "Identity Fusion",
+                                    "sourceId": "a5ed2132dde64015b6e115c5fc46594d"
+                                }
+                            }
+                        },
+                        {
+                            "identityAttributeName": "department",
+                            "transformDefinition": {
+                                "type": "accountAttribute",
+                                "attributes": {
+                                    "attributeName": "department",
+                                    "sourceName": "Identity Fusion",
+                                    "sourceId": "a5ed2132dde64015b6e115c5fc46594d"
+                                }
+                            }
+                        },
+                        {
+                            "identityAttributeName": "displayName",
+                            "transformDefinition": {
+                                "type": "reference",
+                                "attributes": {
+                                    "input": {
+                                        "attributes": {
+                                            "attributeName": "uniqueID",
+                                            "sourceName": "Identity Fusion",
+                                            "sourceId": "a5ed2132dde64015b6e115c5fc46594d"
+                                        },
+                                        "type": "accountAttribute"
+                                    },
+                                    "id": "firstname + lastname"
+                                }
+                            }
+                        },
+                        {
+                            "identityAttributeName": "identificationNumber",
+                            "transformDefinition": {
+                                "type": "accountAttribute",
+                                "attributes": {
+                                    "attributeName": "employeeNumber",
+                                    "sourceName": "Identity Fusion",
+                                    "sourceId": "a5ed2132dde64015b6e115c5fc46594d"
+                                }
+                            }
+                        },
+                        {
+                            "identityAttributeName": "jobTitle",
+                            "transformDefinition": {
+                                "type": "accountAttribute",
+                                "attributes": {
+                                    "attributeName": "title",
+                                    "sourceName": "Identity Fusion",
+                                    "sourceId": "a5ed2132dde64015b6e115c5fc46594d"
+                                }
+                            }
+                        },
+                        {
+                            "identityAttributeName": "cloudLifecycleState",
+                            "transformDefinition": {
+                                "type": "reference",
+                                "attributes": {
+                                    "input": {
+                                        "attributes": {
+                                            "attributeName": "uniqueID",
+                                            "sourceName": "Identity Fusion",
+                                            "sourceId": "a5ed2132dde64015b6e115c5fc46594d"
+                                        },
+                                        "type": "accountAttribute"
+                                    },
+                                    "id": "Lifecycle State - Active"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "identityExceptionReportReference": null,
+                "hasTimeBasedAttr": false,
+                "id": "8553c852283542458defddc50f0f7354",
+                "name": "Identity Fusion",
+                "created": "2024-02-23T13:01:20.265Z",
+                "modified": "2024-04-11T00:07:59.376Z"
+            }
+        }
+    ]
+}

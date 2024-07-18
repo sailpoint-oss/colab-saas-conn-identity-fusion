@@ -25,6 +25,7 @@ import {
     attrConcat,
     attrSplit,
     buildAccountAttributesObject,
+    buildIdentityAttributesObject,
     combineArrays,
     composeErrorMessage,
     datedMessage,
@@ -33,9 +34,8 @@ import {
     getInputFromDescription,
     getOwnerFromSource,
     lm,
-    md,
     normalizeAccountAttributes,
-    processUncorrelatedAccount,
+    replaceArrayItem,
     sleep,
     updateAccountLinks,
 } from './utils'
@@ -48,10 +48,10 @@ import { AxiosError } from 'axios'
 import { v4 as uuidv4 } from 'uuid'
 import { EmailWorkflow } from './model/emailWorkflow'
 import { statuses } from './data/status'
-import { Status, StatusSource } from './model/status'
+import { Status } from './model/status'
 import { Action, ActionSource } from './model/action'
 import { actions } from './data/action'
-import { findIdenticalMatch, findSimilarMatches } from './utils/matching'
+import { lig3 } from './utils/lig'
 
 export class ContextHelper {
     private c: string = 'ContextHelper'
@@ -70,11 +70,13 @@ export class ContextHelper {
     private forms: FormDefinitionResponseBeta[]
     private formInstances: FormInstanceResponseBeta[]
     private errors: string[]
+    private uuids: string[]
 
     constructor(config: Config) {
         this.config = config
         this.sources = []
         this.ids = []
+        this.uuids = []
         this.identities = []
         this.currentIdentities = []
         this.accounts = []
@@ -120,6 +122,7 @@ export class ContextHelper {
             this.identities = await this.listIdentities()
             this.accounts = await this.listAccounts()
             const identityIDs = this.accounts.map((x) => x.identityId)
+            this.uuids = this.accounts.map((x) => x.attributes!.uuid).filter((x) => x !== undefined)
             this.authoritativeAccounts = await this.listAuthoritativeAccounts()
             this.currentIdentities = this.identities.filter((x) => identityIDs.includes(x.id))
             this.forms = await this.listForms()
@@ -171,7 +174,7 @@ export class ContextHelper {
     deleteReviewerID(reviewerID: string, sourceName: string) {
         const reviewers = this.reviewerIDs.get(sourceName)
         if (reviewers) {
-            reviewers.splice(reviewers.indexOf(reviewerID), 1)
+            replaceArrayItem(reviewers, reviewerID)
         }
     }
 
@@ -191,8 +194,14 @@ export class ContextHelper {
         return this.identities.find((x) => x.id === id)
     }
 
-    getIdentityByUID(uid: string): IdentityDocument | undefined {
-        return this.identities.find((x) => x.attributes!.uid === uid)
+    async getIdentityByUID(uid: string): Promise<IdentityDocument | undefined> {
+        if (this.identities.length > 0) {
+            return this.identities.find((x) => x.attributes!.uid === uid)
+        } else {
+            const identity = await this.client.getIdentityByUID(uid)
+            this.identities.push(identity!)
+            return identity
+        }
     }
 
     private async listAccounts(): Promise<Account[]> {
@@ -207,7 +216,8 @@ export class ContextHelper {
         for (const account of accounts) {
             // updateAccountLinks(account, this.identities, config.sources)
             account.attributes!.accounts = account.attributes!.accounts || []
-            account.attributes!.status = account.attributes!.status || []
+            account.attributes!.statuses = account.attributes!.statuses || []
+            account.attributes!.actions = account.attributes!.actions || []
             account.attributes!.reviews = account.attributes!.reviews || []
             account.attributes!.history = account.attributes!.history || []
         }
@@ -235,8 +245,16 @@ export class ContextHelper {
         return account
     }
 
-    getAccountByIdentity(identity: IdentityDocument): Account | undefined {
-        return this.accounts.find((x) => x.identityId === identity.id)
+    async getAccountByIdentity(identity: IdentityDocument): Promise<Account | undefined> {
+        let account = this.accounts.find((x) => x.identityId === identity.id)
+        if (!account) {
+            account = await this.client.getAccountByIdentityID(
+                identity.id,
+                identity.attributes!.cloudAuthoritativeSource
+            )
+        }
+
+        return account
     }
 
     getIdentityAccount(identity: IdentityDocument): Account | undefined {
@@ -256,6 +274,16 @@ export class ContextHelper {
         return authoritativeAccounts
     }
 
+    setUUID(account: Account) {
+        while (!account.attributes!.uuid) {
+            const uuid = uuidv4()
+            if (!this.uuids.includes(uuid)) {
+                this.uuids.push(uuid)
+                account.attributes!.uuid = uuid
+            }
+        }
+    }
+
     async *listUniqueAccounts(): AsyncGenerator<UniqueAccount> {
         const c = 'listUniqueAccounts'
         const accounts: UniqueAccount[] = []
@@ -267,7 +295,7 @@ export class ContextHelper {
                     !(
                         x.uncorrelated === false &&
                         x.attributes!.accounts.length === 0 &&
-                        !x.attributes!.status.includes('reviewer')
+                        !x.attributes!.statuses.includes('reviewer')
                     )
             )
         }
@@ -275,15 +303,7 @@ export class ContextHelper {
         logger.debug(lm('Updating accounts.', c))
         for (const account of this.accounts) {
             updateAccountLinks(account, this.identities, this.config.sources)
-
-            while (!account.attributes!.uuid) {
-                const uuid = uuidv4()
-                if (!uuids.includes(uuid)) {
-                    uuids.push(uuid)
-                    account.attributes!.uuid = uuid
-                    uuids.push(uuid)
-                }
-            }
+            this.setUUID(account)
 
             const uniqueAccount = await this.refreshUniqueAccount(account)
             if (uniqueAccount) {
@@ -316,30 +336,47 @@ export class ContextHelper {
             if (needsRefresh) {
                 logger.debug(lm(`Refreshing ${account.attributes!.uniqueID} account`, c, 1))
 
-                for (const attrDef of schema.attributes) {
+                attributes: for (const attrDef of schema.attributes) {
                     if (!reservedAttributes.includes(attrDef.name)) {
                         const attrConf = this.config.merging_map.find((x) => x.identity === attrDef.name)
                         const attributeMerge = attrConf?.attributeMerge || this.config.attributeMerge
                         let firstSource = true
-                        for (const sourceAccount of sourceAccounts) {
+                        accounts: for (const sourceAccount of sourceAccounts) {
+                            let values: any[] = []
                             let value: any
                             if (attrConf) {
-                                for (const accountAttr of attrConf.account) {
-                                    if (!sourceAccount.attributes) logger.warn(sourceAccount)
+                                //First account attribute found goes
+                                accountAttributes: for (const accountAttr of attrConf.account) {
+                                    if (!sourceAccount.attributes) {
+                                        const message = `Account ${sourceAccount.nativeIdentity} has no attributes`
+                                        logger.warn(sourceAccount)
+                                        continue
+                                    }
                                     value = sourceAccount.attributes![accountAttr]
-                                    if (value) break
+                                    if (
+                                        value &&
+                                        (['multi', 'concatenate'].includes(attributeMerge) || values.length === 0)
+                                    ) {
+                                        values.push(value)
+                                    }
                                 }
                             } else {
                                 value = sourceAccount.attributes![attrDef.name]
+                                values.push(value)
                             }
-                            if (value) {
+
+                            if (values.length > 0) {
                                 let lst: string[]
-                                switch (attributeMerge) {
-                                    case 'multi':
-                                        if (firstSource) {
-                                            lst = [].concat(value)
-                                        } else {
-                                            let previousList: string[] = [].concat(attributes![attrDef.name])
+                                let previousList: string[]
+                                if (['multi', 'concatenate'].includes(attributeMerge)) {
+                                    if (!attributes![attrDef.name]) {
+                                        attributes![attrDef.name] = []
+                                    }
+                                }
+                                values: for (const value of values) {
+                                    switch (attributeMerge) {
+                                        case 'multi':
+                                            previousList = [].concat(attributes![attrDef.name])
                                             if (previousList.length === 0) {
                                                 lst = [].concat(value)
                                             } else if (previousList.length > 1) {
@@ -347,46 +384,44 @@ export class ContextHelper {
                                             } else {
                                                 lst = [...attrSplit(previousList[0]), value]
                                             }
-                                        }
-                                        attributes![attrDef.name] = Array.from(new Set(lst))
-                                        break
+                                            attributes![attrDef.name] = Array.from(new Set(lst)).sort()
+                                            break
 
-                                    case 'concatenate':
-                                        if (firstSource) {
-                                            lst = [].concat(value)
-                                        } else {
+                                        case 'concatenate':
                                             lst = []
-                                            let previousList: string[] = [].concat(attributes![attrDef.name])
+                                            previousList = [].concat(attributes![attrDef.name])
                                             for (const item of previousList) {
                                                 lst = lst.concat(attrSplit(item))
                                             }
                                             lst = lst.concat(attrSplit(value))
-                                        }
-                                        attributes![attrDef.name] = attrConcat(lst)
-                                        break
-                                    case 'first':
-                                        if (firstSource) {
-                                            attributes![attrDef.name] = value
-                                        }
-                                        break
+                                            attributes![attrDef.name] = attrConcat(lst)
+                                            break
+                                        case 'first':
+                                            if (firstSource) {
+                                                attributes![attrDef.name] = value
+                                                break values
+                                            }
+                                            break
 
-                                    case 'source':
-                                        const source = attrConf?.source
-                                        if (sourceAccount.sourceName === source) {
-                                            attributes![attrDef.name] = value
-                                        }
-                                        break
-                                    default:
-                                        break
+                                        case 'source':
+                                            const source = attrConf?.source
+                                            if (sourceAccount.sourceName === source) {
+                                                attributes![attrDef.name] = value
+                                                break values
+                                            }
+                                            break
+                                        default:
+                                            break
+                                    }
                                 }
+                                firstSource = false
                             }
-                            firstSource = false
                         }
                     }
                 }
             }
 
-            attributes!.status = Array.from(new Set(attributes!.status))
+            attributes!.statuses = Array.from(new Set(attributes!.statuses))
 
             if (account.uncorrelated) {
                 logger.debug(lm(`New account. Needs to be enabled.`, c, 2))
@@ -443,8 +478,6 @@ export class ContextHelper {
         logger.debug(lm(`Processing ${account.name} (${account.id})`, c, 1))
         let uniqueID: string
 
-        uniqueID = await buildUniqueID(account, this.ids, this.config)
-
         const uniqueAccount: Account = { ...account }
 
         if (status !== 'reviewer') {
@@ -460,6 +493,8 @@ export class ContextHelper {
         uniqueAccount.attributes!.uniqueID = uniqueID
         uniqueAccount.attributes!.statuses = [status]
         uniqueAccount.attributes!.reviews = []
+        uniqueAccount.attributes!.history = []
+        uniqueAccount.modified = new Date(0).toISOString()
 
         if (msg) {
             const message = datedMessage(msg, account)
@@ -470,6 +505,12 @@ export class ContextHelper {
         this.accounts.push(uniqueAccount)
 
         return uniqueAccount
+    }
+
+    getSourceNameByID(id: string): string {
+        const source = this.sources.find((x) => x.id === id)
+
+        return source?.name ? source.name : ''
     }
 
     async buildUniqueAccountFromID(id: string): Promise<UniqueAccount> {
@@ -526,7 +567,8 @@ export class ContextHelper {
     }
 
     listFormInstancesByReviewerID(reviewerID: string): FormInstanceResponseBeta[] {
-        return this.formInstances.filter((x) => x.recipients!.find((y) => y.id === reviewerID))
+        const formInstances = this.formInstances.filter((x) => x.recipients!.find((y) => y.id === reviewerID))
+        return formInstances ? formInstances : []
     }
 
     getFormByID(id: string): FormDefinitionResponseBeta | undefined {
@@ -560,7 +602,7 @@ export class ContextHelper {
         await this.client.deleteForm(form.id!)
 
         const index = this.forms.findIndex((x) => x.id === form.id!)
-        this.forms.splice(index, 1)
+        replaceArrayItem(this.forms, index)
     }
 
     async getFormInstances(forms?: FormDefinitionResponseBeta[]): Promise<FormInstanceResponseBeta[]> {
@@ -578,14 +620,8 @@ export class ContextHelper {
     }
 
     async deleteFormInstance(formInstance: FormInstanceResponseBeta) {
-        this.formInstances.splice(this.formInstances.indexOf(formInstance), 1)
+        replaceArrayItem(this.formInstances, formInstance)
     }
-
-    // async processFormInstance(
-    //     formInstance: FormInstanceResponseBeta
-    // ): Promise<{ decision: string; account: string; message: string }> {
-    //     return processFormInstance(this.client, formInstance)
-    // }
 
     async createFormInstance(form: FormDefinitionResponseBeta, reviewerID: string) {
         const expire = getExpirationDate(this.config)
@@ -607,6 +643,69 @@ export class ContextHelper {
         return this.config.merging_isEnabled === true && this.listAllReviewerIDs().length > 0
     }
 
+    private findIdenticalMatch(account: Account): IdentityDocument | undefined {
+        let match: IdentityDocument | undefined
+        const accountAttributes = buildAccountAttributesObject(account, this.config.merging_map, true)
+        const accountStringAttributes = JSON.stringify(accountAttributes)
+        const candidatesAttributes = this.currentIdentities.map((x) =>
+            buildIdentityAttributesObject(x, this.config.merging_map)
+        )
+        const candidatesStringAttributes = candidatesAttributes.map((x) => JSON.stringify(x))
+
+        const firstIndex = candidatesStringAttributes.indexOf(accountStringAttributes)
+        if (firstIndex > -1) {
+            match = this.currentIdentities[firstIndex]
+        }
+
+        return match
+    }
+
+    private findSimilarMatches(account: Account): { identity: IdentityDocument; score: Map<string, string> }[] {
+        const similarMatches: { identity: IdentityDocument; score: Map<string, string> }[] = []
+        const accountAttributes = buildAccountAttributesObject(account, this.config.merging_map, true)
+        const length = Object.keys(accountAttributes).length
+
+        candidates: for (const candidate of this.currentIdentities) {
+            // const scores: number[] = []
+            const scores = new Map<string, number>()
+            attributes: for (const attribute of Object.keys(accountAttributes)) {
+                let cValue, iValue
+                iValue = accountAttributes[attribute] as string
+                cValue = candidate.attributes![attribute] as string
+                if (iValue && cValue) {
+                    const similarity = lig3(iValue, cValue)
+                    const score = similarity * 100
+                    if (!this.config.global_merging_score) {
+                        const threshold = this.config.getScore(attribute)
+                        if (score < threshold) {
+                            continue candidates
+                        }
+                    }
+                    scores.set(attribute, score)
+                }
+            }
+
+            if (this.config.global_merging_score) {
+                const finalScore =
+                    [...scores.values()].reduce((p, c) => {
+                        return p + c
+                    }, 0) / length
+
+                if (finalScore >= this.config.getScore()) {
+                    const score = new Map<string, string>()
+                    score.set('overall', finalScore.toFixed(0))
+                    similarMatches.push({ identity: candidate, score })
+                }
+            } else {
+                const score = new Map<string, string>()
+                scores.forEach((v, k) => score.set(k, v.toFixed(0)))
+                similarMatches.push({ identity: candidate, score })
+            }
+        }
+
+        return similarMatches
+    }
+
     async processUncorrelatedAccount(uncorrelatedAccount: Account): Promise<UniqueForm | undefined> {
         const c = 'processUncorrelatedAccount'
 
@@ -622,19 +721,17 @@ export class ContextHelper {
                 lm(`Checking identical match for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id}).`, c, 1)
             )
             const normalizedAccount = normalizeAccountAttributes(uncorrelatedAccount, this.config.merging_map)
-            const identicalMatch = findIdenticalMatch(
-                normalizedAccount,
-                this.currentIdentities,
-                this.config.merging_map
-            )
+            const identicalMatch = this.findIdenticalMatch(normalizedAccount)
             if (identicalMatch) {
                 logger.debug(lm(`Identical match found.`, c, 1))
                 uniqueAccount = this.accounts.find((x) => x.identityId === identicalMatch.id) as Account
                 message = datedMessage('Identical match found.', uncorrelatedAccount)
                 status = 'auto'
-                uniqueAccount.attributes!.status.push(status)
-                uniqueAccount.attributes!.accounts.push(uncorrelatedAccount.id)
-                uniqueAccount.attributes!.history.push(message)
+                const attributes = uniqueAccount.attributes!
+                attributes.statuses.push(status)
+                attributes.accounts.push(uncorrelatedAccount.id)
+                attributes.history.push(message)
+                replaceArrayItem(attributes.statuses, 'edited')
                 // Check if similar match exists
             } else {
                 let similarMatches: {
@@ -645,13 +742,7 @@ export class ContextHelper {
                     lm(`Checking similar matches for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id})`, c, 1)
                 )
 
-                similarMatches = findSimilarMatches(
-                    uncorrelatedAccount,
-                    currentIdentities,
-                    config.merging_map,
-                    config.getScore,
-                    config.global_merging_score
-                )
+                similarMatches = this.findSimilarMatches(uncorrelatedAccount)
 
                 if (similarMatches.length > 0) {
                     logger.debug(lm(`Similar matches found`, c, 1))
@@ -745,14 +836,21 @@ export class ContextHelper {
         return workflow
     }
 
+    isSourceReviewer(sourceName: string, identityID: string): boolean {
+        // const sourceID = this.sources.find((x) => x.name === sourceName)!.id!
+
+        return this.reviewerIDs.get(sourceName)!.includes(identityID)
+    }
+
     private async buildReviewersMap(): Promise<Map<string, string[]>> {
         const reviewersMap = new Map<string, string[]>()
         const sourceIDs = this.sources.map((x) => x.id)
 
+        const allReviewers = this.accounts.filter((x) => x.attributes!.statuses.includes('reviewer'))
         for (const source of this.sources) {
             const sourceID = source.id!
-            const reviewers = this.accounts.filter((x) => x.attributes!.statuses.includes(sourceID))
-            const reviewerIDs = reviewers.map((x) => x.id!)
+            const reviewers = allReviewers.filter((x) => x.attributes!.actions.includes(sourceID))
+            const reviewerIDs = reviewers.map((x) => x.identityId!)
             // reviewersMap.set(sourceID, reviewerIDs)
             reviewersMap.set(source.name, reviewerIDs)
         }
@@ -815,6 +913,29 @@ export class ContextHelper {
         return { decision, account, message }
     }
 
+    async resetUniqueID(account: UniqueAccount): Promise<UniqueAccount> {
+        const uniqueID = await this.buildUniqueID(account.identity)
+        account.attributes!.uniqueID = uniqueID
+        const schema = await this.getSchema()
+        if (schema) {
+            account.identity = (
+                account.attributes[schema.identityAttribute]
+                    ? account.attributes[schema.identityAttribute]
+                    : account.attributes.uuid
+            ) as string
+            account.uuid = (
+                account.attributes[schema.displayAttribute]
+                    ? (account.attributes[schema.displayAttribute] as string)
+                    : account.attributes.uuid
+            ) as string
+        } else {
+            account.identity = account.attributes.uuid as string
+            account.uuid = account.attributes.uuid as string
+        }
+
+        return account
+    }
+
     private async buildDynamicSchema(): Promise<AccountSchema> {
         const c = 'buildDynamicSchema'
         logger.debug(lm('Fetching sources.', c, 1))
@@ -852,13 +973,22 @@ export class ContextHelper {
                 multi: true,
             },
             {
-                name: 'status',
-                description: 'Status',
+                name: 'statuses',
+                description: 'Statuses',
                 type: 'string',
                 multi: true,
                 entitlement: true,
                 managed: false,
                 schemaObjectType: 'status',
+            },
+            {
+                name: 'actions',
+                description: 'Actions',
+                type: 'string',
+                multi: true,
+                entitlement: true,
+                managed: true,
+                schemaObjectType: 'action',
             },
             {
                 name: 'accounts',
@@ -962,25 +1092,49 @@ export class ContextHelper {
         return schema
     }
 
+    // async checkAccountCreateProvisioningPolicy() {
+    //     let policy = await this.client.getProvisioningPolicy(this.source!.id!, UsageType.Create)
+    //     if (!policy) {
+    //         const policyDTO: ProvisioningPolicyDto = {
+    //             name: 'Account Create',
+    //             usageType: UsageType.Create,
+    //             fields: [
+    //                 {
+    //                     name: 'uniqueID',
+    //                     isRequired: true,
+    //                     type: 'string',
+    //                     transform: {
+    //                         type: 'identityAttribute',
+    //                         attributes: {
+    //                             name: 'uid',
+    //                         },
+    //                     },
+    //                 },
+    //             ],
+    //         }
+    //         policy = await this.client.createProvisioningPolicy(this.source!.id!, policyDTO)
+    //     }
+    // }
+
     buildStatusEntitlements(): Status[] {
         const statusEntitlements = statuses.map((x) => new Status(x))
-        const sourceInput: StatusSource[] = this.sources.map(({ id, name }) => ({
-            id: id!,
-            name: `${name} source reviewer`,
-            description: `Designated reviewer for source ${name} potential duplicated identities`,
-        }))
-        const sourceEntitlements = sourceInput.map((x) => new Status(x))
-        const entitlements = [...statusEntitlements, ...sourceEntitlements]
+        // const sourceInput: StatusSource[] = this.sources.map(({ id, name }) => ({
+        //     id: id!,
+        //     name: `${name} source reviewer`,
+        //     description: `Designated reviewer for source ${name} potential duplicated identities`,
+        // }))
+        // const sourceEntitlements = sourceInput.map((x) => new Status(x))
+        // const entitlements = [...statusEntitlements, ...sourceEntitlements]
 
-        return entitlements
+        return statusEntitlements
     }
 
     buildActionEntitlements(): Action[] {
         const actionEntitlements = actions.map((x) => new Action(x))
         const sourceInput: ActionSource[] = this.sources.map(({ id, name }) => ({
             id: id!,
-            name: `Set ${name} source reviewer`,
-            description: `Set reviewer for source ${name} potential duplicated identities`,
+            name: `${name} source reviewer`,
+            description: `Reviewer for source ${name} potential duplicated identities`,
         }))
         const sourceEntitlements = sourceInput.map((x) => new Action(x))
         const entitlements = [...actionEntitlements, ...sourceEntitlements]

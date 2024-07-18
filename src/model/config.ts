@@ -32,7 +32,6 @@ export interface Config {
     }[]
     global_merging_score: boolean
     merging_score?: number
-    merging_reviewerIsSourceOwner: boolean
     since: string
     sourceDescription: string
     sources: string[]

@@ -179,14 +179,6 @@
                             "required": false
                         },
                         {
-                            "key": "merging_reviewerIsSourceOwner",
-                            "label": "Use each source's governance group or owner as reviewer?",
-                            "parentKey": "merging_isEnabled",
-                            "parentValue": "true",
-                            "type": "checkbox",
-                            "required": false
-                        },
-                        {
                             "key": "merging_expirationDays",
                             "label": "Manual review expiration days",
                             "parentKey": "merging_isEnabled",
@@ -401,5 +393,21 @@
                 }
             ]
         }
-    ]
+    ],
+    "accountCreateTemplate": {
+        "fields": [
+            {
+                "key": "uniqueID",
+                "label": "uniqueID",
+                "type": "string",
+                "required": true,
+                "initialValue": {
+                    "type": "identityAttribute",
+                    "attributes": {
+                        "name": "uid"
+                    }
+                }
+            }
+        ]
+    }
 }

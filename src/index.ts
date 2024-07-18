@@ -1,6 +1,8 @@
 import {
+    AttributeChangeOp,
     ConnectorError,
     ConnectorErrorType,
+    StdAccountCreateHandler,
     StdAccountDisableHandler,
     StdAccountDiscoverSchemaHandler,
     StdAccountEnableHandler,
@@ -14,13 +16,12 @@ import {
     logger,
     readConfig,
 } from '@sailpoint/connector-sdk'
-import { Account } from 'sailpoint-api-client'
+import { Account, IdentityDocument } from 'sailpoint-api-client'
 import { Email } from './model/email'
-import { buildReviewFromFormInstance, datedMessage, getAccountByIdentity, getFormValue, opLog } from './utils'
+import { buildReviewFromFormInstance, datedMessage, getFormValue, opLog, replaceArrayItem } from './utils'
 
 import { ContextHelper } from './contextHelper'
 import { PROCESSINGWAIT } from './constants'
-import { UniqueForm } from './model/form'
 import { UniqueAccount } from './model/account'
 
 // Connector must be exported as module property named connector
@@ -32,11 +33,10 @@ export const connector = async () => {
 
     //TODO improve
     const stdTest: StdTestConnectionHandler = async (context, input, res) => {
+        opLog(config, input)
         await ctx.init(true)
         const source = ctx.getSource()
         const sources = ctx.listSources()
-
-        logger.info(config)
 
         if (!source) {
             throw new ConnectorError('Unable to connect to IdentityNow! Please check your configuration')
@@ -57,7 +57,7 @@ export const connector = async () => {
         }, PROCESSINGWAIT)
 
         try {
-            await opLog(config, input)
+            opLog(config, input)
 
             //Resetting accounts
             if (config.reset) return
@@ -98,16 +98,18 @@ export const connector = async () => {
                                     await ctx.processFormInstance(currentFormInstance)
                                 logger.debug(`Result: ${message}.`)
 
-                                const identityMatch = ctx.getIdentityByUID(decision)
+                                const identityMatch = await ctx.getIdentityByUID(decision)
 
                                 if (identityMatch) {
                                     logger.debug(`Updating existing account for ${decision}.`)
-                                    const uniqueAccount = ctx.getAccountByIdentity(identityMatch)!
+                                    const uniqueAccount = (await ctx.getAccountByIdentity(identityMatch)) as Account
                                     const uncorrelatedAccount = (await ctx.getAccount(accountID)) as Account
                                     const msg = datedMessage(message, uncorrelatedAccount)
-                                    uniqueAccount.attributes!.accounts.push(account)
-                                    uniqueAccount.attributes!.history.push(msg)
-                                    uniqueAccount.attributes!.status.push('manual')
+                                    const attributes = uniqueAccount.attributes!
+                                    attributes.accounts.push(account)
+                                    attributes.history.push(msg)
+                                    attributes.statuses.push('manual')
+                                    replaceArrayItem(attributes.statuses, 'edited')
                                 } else {
                                     logger.debug(`Creating new unique account.`)
                                     const pendingAccount = pendingAccounts.find((x) => x.id === account) as Account
@@ -138,7 +140,7 @@ export const connector = async () => {
 
                     const index = pendingAccounts.findIndex((x) => x.id === accountID)
                     if (index > -1) {
-                        pendingAccounts.splice(index, 1)
+                        replaceArrayItem(pendingAccounts, index)
                     }
                     if (finished || cancelled) {
                         try {
@@ -208,9 +210,8 @@ export const connector = async () => {
                     const reviewerIDs = ctx.listReviewerIDs(sourceName)
 
                     for (const reviewerID of reviewerIDs) {
-                        const reviewer = ctx.getIdentityById(reviewerID)
-
-                        if (reviewer) {
+                        if (ctx.isSourceReviewer(sourceName, reviewerID)) {
+                            const reviewer = ctx.getIdentityById(reviewerID)!
                             let currentFormInstance = ctx.getFormInstanceByReviewerID(form, reviewerID)
 
                             if (!currentFormInstance) {
@@ -223,10 +224,6 @@ export const connector = async () => {
                                 const email = new Email(reviewer, form.name!, currentFormInstance)
                                 await ctx.sendEmail(email)
                             }
-                        } else {
-                            ctx.deleteReviewerID(reviewerID, sourceName)
-                            const error = `Reviewer ID ${reviewerID} was not found. Check your governance group for orphan members`
-                            ctx.handleError(error)
                         }
                     }
                 }
@@ -234,47 +231,20 @@ export const connector = async () => {
                 //PROCESS REVIEWERS
                 logger.info('Processing reviewers.')
                 const reviewerIDs = ctx.listAllReviewerIDs()
-                for (const reviewerID of reviewerIDs) {
-                    const reviews = []
-                    for (const instance of ctx.listFormInstancesByReviewerID(reviewerID)) {
-                        const form = ctx.getFormByID(instance.formDefinitionId!)
-                        if (form) {
-                            const review = buildReviewFromFormInstance(instance)
-                            reviews.push(review)
-                        }
-                    }
 
-                    const reviewer = ctx.getIdentityById(reviewerID)!
-                    if (reviewer) {
-                        let reviewerAccount = ctx.getIdentityAccount(reviewer)
-                        if (reviewerAccount) {
-                            logger.debug(`${reviewer.attributes!.uid} reviewer account found.`)
-                            reviewerAccount.attributes!.reviews = reviews
-                        } else {
-                            try {
-                                logger.debug(
-                                    `${reviewer.attributes!.uid} reviewer account not found. Creating unique account.`
-                                )
-                                const reviewerAccountID = getAccountByIdentity(reviewer, reviewer.source!.id!)?.id!
-                                reviewerAccount = await ctx.getAccount(reviewerAccountID)
-                                if (reviewerAccount) {
-                                    const message = 'Unique account for reviewer'
-                                    const uniqueAccount = await ctx.buildUniqueAccount(
-                                        reviewerAccount,
-                                        'reviewer',
-                                        message
-                                    )
-                                    uniqueAccount.attributes!.reviews = reviews
-                                } else {
-                                    throw new Error(`Unable to find base account for reviewer ID ${reviewerID}`)
-                                }
-                                await ctx.createUniqueForm({} as UniqueForm)
-                            } catch (e) {
-                                ctx.handleError(e)
+                for (const reviewerID of reviewerIDs) {
+                    try {
+                        const reviewer = ctx.getIdentityById(reviewerID)!
+                        const reviewerAccount = ctx.getIdentityAccount(reviewer)!
+                        reviewerAccount.attributes!.reviews = []
+                        for (const instance of ctx.listFormInstancesByReviewerID(reviewerID)) {
+                            const form = ctx.getFormByID(instance.formDefinitionId!)
+                            if (form) {
+                                const review = buildReviewFromFormInstance(instance)
+                                reviewerAccount.attributes!.reviews.push(review)
                             }
                         }
-                    } else {
-                        const error = `Reviewer ID ${reviewerID} was not found. Check your governance group for orphan members`
+                    } catch (error) {
                         ctx.handleError(error)
                     }
                 }
@@ -283,7 +253,7 @@ export const connector = async () => {
             //BUILD RESULTING ACCOUNTS
             logger.info('Sending accounts.')
             for await (const account of ctx.listUniqueAccounts()) {
-                logger.info(account)
+                logger.info({ account })
                 res.send(account)
             }
 
@@ -294,7 +264,7 @@ export const connector = async () => {
     }
 
     const stdAccountRead: StdAccountReadHandler = async (context, input, res) => {
-        await opLog(config, input)
+        opLog(config, input)
 
         logger.info(`Reading ${input.identity} account.`)
 
@@ -311,7 +281,7 @@ export const connector = async () => {
 
         try {
             const account = await ctx.buildUniqueAccountFromID(input.identity)
-            logger.info(account)
+            logger.info({ account })
             res.send(account)
         } catch (error) {
             logger.error(error)
@@ -320,8 +290,58 @@ export const connector = async () => {
         }
     }
 
+    const stdAccountCreate: StdAccountCreateHandler = async (context, input, res) => {
+        opLog(config, input)
+
+        logger.info(`Creating ${input.attributes.uniqueID} account.`)
+
+        if (config.reset) return
+
+        await ctx.init()
+        if (input.schema) {
+            ctx.loadSchema(input.schema)
+        }
+        //Keepalive
+        const interval = setInterval(() => {
+            res.keepAlive()
+        }, PROCESSINGWAIT)
+
+        try {
+            if (input.attributes.actions && input.attributes.actions.length > 0) {
+                const sourceIDs = ctx.listSources().map((x) => x.id)
+                const actions = [].concat(input.attributes.actions)
+                //Check that all requests are reviewer requests
+                if (!actions.some((x) => !sourceIDs.includes(x))) {
+                    const identity = (await ctx.getIdentityByUID(input.attributes.uniqueID)) as IdentityDocument
+                    const originAccount = (await ctx.getAccountByIdentity(identity)) as Account
+                    const uniqueAccount = await ctx.buildUniqueAccount(originAccount, 'reviewer', '')
+                    uniqueAccount.attributes!.actions = []
+                    for (const action of actions) {
+                        const sourceName = ctx.getSourceNameByID(action)
+                        const message = datedMessage(`Reviewer assigned for ${sourceName} source`, originAccount)
+                        uniqueAccount.attributes!.actions.push(action)
+                        uniqueAccount.attributes!.history.push(message)
+                    }
+                    ctx.setUUID(uniqueAccount)
+
+                    const account = (await ctx.refreshUniqueAccount(uniqueAccount)) as UniqueAccount
+
+                    logger.info({ account })
+                    res.send(account)
+                }
+            } else {
+                const message = `Only reviewer entitlements can be requested on account creation`
+                throw new ConnectorError(message, ConnectorErrorType.Generic)
+            }
+        } catch (error) {
+            logger.error(error)
+        } finally {
+            clearInterval(interval)
+        }
+    }
+
     const stdAccountUpdate: StdAccountUpdateHandler = async (context, input, res) => {
-        await opLog(config, input)
+        opLog(config, input)
 
         logger.info(`Updating ${input.identity} account.`)
 
@@ -331,7 +351,7 @@ export const connector = async () => {
         if (input.schema) {
             ctx.loadSchema(input.schema)
         }
-        const account = await ctx.buildUniqueAccountFromID(input.identity)
+        let account = await ctx.buildUniqueAccountFromID(input.identity)
         let message: string
         try {
             if (input.changes) {
@@ -340,38 +360,46 @@ export const connector = async () => {
                         case 'actions':
                             switch (change.value) {
                                 case 'reset':
-                                    const uniqueID = await ctx.buildUniqueID(input.identity)
-                                    account.attributes.uniqueID = uniqueID
-                                    const schema = await ctx.getSchema()
-                                    if (schema) {
-                                        account.identity = (
-                                            account.attributes[schema.identityAttribute]
-                                                ? account.attributes[schema.identityAttribute]
-                                                : account.attributes.uuid
-                                        ) as string
-                                        account.uuid = (
-                                            account.attributes[schema.displayAttribute]
-                                                ? (account.attributes[schema.displayAttribute] as string)
-                                                : account.attributes.uuid
-                                        ) as string
-                                    } else {
-                                        account.identity = account.attributes.uuid as string
-                                        account.uuid = account.attributes.uuid as string
-                                    }
+                                    account = await ctx.resetUniqueID(account)
                                     break
 
                                 case 'edit':
                                     break
+
                                 case 'report':
                                     break
+
                                 default:
                                     const sourceIDs = ctx.listSources().map((x) => x.id)
-                                    if (sourceIDs.includes(change.value)) {
-                                        const statuses = account.attributes.statuses as string[]
-                                        statuses.push(change.value)
-                                    } else {
-                                        message = `Source ID ${change.value} is not a currently configured source.`
-                                        throw new ConnectorError(message, ConnectorErrorType.Generic)
+                                    const statuses = account.attributes.statuses as string[]
+                                    const actions = account.attributes.actions as string[]
+                                    switch (change.op) {
+                                        case AttributeChangeOp.Add:
+                                            if (!statuses.includes('reviewer')) {
+                                                statuses.push('reviewer')
+                                            }
+                                            if (sourceIDs.includes(change.value)) {
+                                                actions.push(change.value)
+                                            } else {
+                                                message = `Source ID ${change.value} is not a currently configured source.`
+                                                throw new ConnectorError(message, ConnectorErrorType.Generic)
+                                            }
+                                            break
+                                        case AttributeChangeOp.Remove:
+                                            replaceArrayItem(statuses, 'reviewer')
+                                            replaceArrayItem(actions, change.value)
+                                            break
+                                        case AttributeChangeOp.Set:
+                                            const now = new Date().toISOString().split('T')[0]
+                                            message = `[${now}] Account edited by attribute sync`
+                                            statuses.push('edited')
+                                            account.attributes[change.attribute] = change.value
+                                            const history = account.attributes!.history as string[]
+                                            history.push(message)
+                                            break
+
+                                        default:
+                                            break
                                     }
                                     break
                             }
@@ -395,12 +423,12 @@ export const connector = async () => {
             ctx.handleError(e)
         }
 
-        logger.info(account)
+        logger.info({ account })
         res.send(account)
     }
 
     const stdAccountEnable: StdAccountEnableHandler = async (context, input, res) => {
-        await opLog(config, input)
+        opLog(config, input)
 
         logger.info(`Enabling ${input.identity} account.`)
 
@@ -422,7 +450,7 @@ export const connector = async () => {
             account.disabled = false
             account.attributes.IIQDisabled = false
 
-            logger.info(account)
+            logger.info({ account })
             res.send(account)
         } catch (error) {
             logger.error(error)
@@ -432,7 +460,7 @@ export const connector = async () => {
     }
 
     const stdAccountDisable: StdAccountDisableHandler = async (context, input, res) => {
-        await opLog(config, input)
+        opLog(config, input)
 
         logger.info(`Disabling ${input.identity} account.`)
 
@@ -454,7 +482,7 @@ export const connector = async () => {
             account.disabled = true
             account.attributes.IIQDisabled = true
 
-            logger.info(account)
+            logger.info({ account })
             res.send(account)
         } catch (error) {
             logger.error(error)
@@ -466,10 +494,13 @@ export const connector = async () => {
     const stdEntitlementList: StdEntitlementListHandler = async (context, input, res) => {
         const c = 'stdEntitlementList'
         const errors: string[] = []
+        opLog(config, input)
 
         try {
-            logger.info(input)
+            // await ctx.checkAccountCreateProvisioningPolicy()
+
             let entitlements: StdEntitlementListOutput[]
+            await ctx.init(true)
             const sources = ctx.listSources()
             switch (input.type) {
                 case 'status':
@@ -485,7 +516,7 @@ export const connector = async () => {
                     throw new ConnectorError(message)
             }
             for (const e of entitlements) {
-                logger.info(e)
+                logger.info({ e })
                 res.send(e)
             }
         } catch (e) {
@@ -499,13 +530,13 @@ export const connector = async () => {
     }
 
     const stdAccountDiscoverSchema: StdAccountDiscoverSchemaHandler = async (context, input, res) => {
-        await opLog(config, input)
+        opLog(config, input)
         logger.info('Building dynamic schema.')
 
         await ctx.init(true)
         const schema = await ctx.getSchema()
 
-        logger.info(schema)
+        logger.info({ schema })
         res.send(schema)
     }
 
@@ -513,6 +544,7 @@ export const connector = async () => {
         .stdTestConnection(stdTest)
         .stdAccountList(stdAccountList)
         .stdAccountRead(stdAccountRead)
+        .stdAccountCreate(stdAccountCreate)
         .stdAccountUpdate(stdAccountUpdate)
         .stdAccountEnable(stdAccountEnable)
         .stdAccountDisable(stdAccountDisable)

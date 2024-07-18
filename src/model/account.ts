@@ -1,6 +1,6 @@
 import { AccountSchema, Attributes, StdAccountListOutput } from '@sailpoint/connector-sdk'
 import { Account } from 'sailpoint-api-client'
-import { combineArrays } from '../utils'
+import { combineArrays, replaceArrayItem } from '../utils'
 
 export class UniqueAccount implements StdAccountListOutput {
     identity: string
@@ -14,11 +14,11 @@ export class UniqueAccount implements StdAccountListOutput {
         this.attributes.IIQDisabled = this.disabled
 
         const accountsCount = account.attributes!.accounts.length
-        let status = this.attributes.status as string[]
-        if (accountsCount === 0) {
-            this.attributes.status = combineArrays(status, ['orphan'])
-        } else if (status.includes('orphan')) {
-            status.splice(status.indexOf('orphan'), 1)
+        let statuses = this.attributes.statuses as string[]
+        if (accountsCount === 0 && !statuses.includes('reviewer')) {
+            this.attributes.statuses = combineArrays(statuses, ['orphan'])
+        } else if (statuses.includes('orphan')) {
+            replaceArrayItem(statuses, 'orphan')
         }
 
         if (schema) {

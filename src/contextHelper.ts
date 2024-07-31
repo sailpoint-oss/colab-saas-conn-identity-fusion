@@ -35,15 +35,17 @@ import {
     getOwnerFromSource,
     lm,
     normalizeAccountAttributes,
-    replaceArrayItem,
+    deleteArrayItem,
     sleep,
     updateAccountLinks,
+    stringifyIdentity,
+    stringifyScore,
 } from './utils'
 import { IDENTITYNOTFOUNDRETRIES, IDENTITYNOTFOUNDWAIT, WORKFLOW_NAME, reservedAttributes } from './constants'
 import { UniqueForm } from './model/form'
 import { buildUniqueID } from './utils/unique'
-import { Email, ErrorEmail } from './model/email'
-import { UniqueAccount } from './model/account'
+import { ReviewEmail, ErrorEmail } from './model/email'
+import { AccountAnalysis, SimilarAccountMatch, UniqueAccount } from './model/account'
 import { AxiosError } from 'axios'
 import { v4 as uuidv4 } from 'uuid'
 import { EmailWorkflow } from './model/emailWorkflow'
@@ -71,6 +73,7 @@ export class ContextHelper {
     private formInstances: FormInstanceResponseBeta[]
     private errors: string[]
     private uuids: string[]
+    private baseUrl: string
 
     constructor(config: Config) {
         this.config = config
@@ -101,6 +104,8 @@ export class ContextHelper {
 
             return score ? score : 0
         }
+
+        this.baseUrl = new URL(this.config.baseurl.replace('.api.', '.')).origin
     }
 
     async init(skipData?: boolean) {
@@ -174,7 +179,7 @@ export class ContextHelper {
     deleteReviewerID(reviewerID: string, sourceName: string) {
         const reviewers = this.reviewerIDs.get(sourceName)
         if (reviewers) {
-            replaceArrayItem(reviewers, reviewerID)
+            deleteArrayItem(reviewers, reviewerID)
         }
     }
 
@@ -241,6 +246,12 @@ export class ContextHelper {
 
     async getAccount(id: string): Promise<Account | undefined> {
         const account = await this.client.getAccount(id)
+
+        return account
+    }
+
+    async getFusionAccount(id: string): Promise<Account | undefined> {
+        const account = this.accounts.find((x) => x.nativeIdentity === id)
 
         return account
     }
@@ -602,7 +613,7 @@ export class ContextHelper {
         await this.client.deleteForm(form.id!)
 
         const index = this.forms.findIndex((x) => x.id === form.id!)
-        replaceArrayItem(this.forms, index)
+        deleteArrayItem(this.forms, index)
     }
 
     async getFormInstances(forms?: FormDefinitionResponseBeta[]): Promise<FormInstanceResponseBeta[]> {
@@ -620,7 +631,7 @@ export class ContextHelper {
     }
 
     async deleteFormInstance(formInstance: FormInstanceResponseBeta) {
-        replaceArrayItem(this.formInstances, formInstance)
+        deleteArrayItem(this.formInstances, formInstance)
     }
 
     async createFormInstance(form: FormDefinitionResponseBeta, reviewerID: string) {
@@ -706,6 +717,49 @@ export class ContextHelper {
         return similarMatches
     }
 
+    async analyzeUncorrelatedAccount(uncorrelatedAccount: Account): Promise<AccountAnalysis> {
+        const c = 'analyzeUncorrelatedAccount'
+
+        let results: string[] = []
+        const normalizedAccount = normalizeAccountAttributes(uncorrelatedAccount, this.config.merging_map)
+        const identicalMatch = this.findIdenticalMatch(normalizedAccount)
+        const url = this.baseUrl + '/ui/a/admin/identities'
+        let similarMatches: SimilarAccountMatch[] = []
+        if (identicalMatch) {
+            logger.debug(
+                lm(`Checking identical match for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id}).`, c, 1)
+            )
+            results.push(`Identical to ${stringifyIdentity(identicalMatch, url)}`)
+            logger.debug(lm(`Identical match found.`, c, 1))
+            // Check if similar match exists
+        } else {
+            logger.debug(
+                lm(`Checking similar matches for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id})`, c, 1)
+            )
+
+            similarMatches = this.findSimilarMatches(uncorrelatedAccount)
+            if (similarMatches.length > 0) {
+                results = results.concat(
+                    similarMatches.map(
+                        (x) => `Similar to ${stringifyIdentity(x.identity, url)} [ ${stringifyScore(x.score)} ]`
+                    )
+                )
+                logger.debug(lm(`Similar matches found`, c, 1))
+            } else {
+                results.push(`No matching identity found`)
+            }
+        }
+
+        const analysis: AccountAnalysis = {
+            account: normalizedAccount,
+            results,
+            identicalMatch,
+            similarMatches,
+        }
+
+        return analysis
+    }
+
     async processUncorrelatedAccount(uncorrelatedAccount: Account): Promise<UniqueForm | undefined> {
         const c = 'processUncorrelatedAccount'
 
@@ -717,11 +771,8 @@ export class ContextHelper {
         const merging = await this.isMergingEnabled()
 
         if (merging) {
-            logger.debug(
-                lm(`Checking identical match for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id}).`, c, 1)
-            )
-            const normalizedAccount = normalizeAccountAttributes(uncorrelatedAccount, this.config.merging_map)
-            const identicalMatch = this.findIdenticalMatch(normalizedAccount)
+            const { identicalMatch, similarMatches } = await this.analyzeUncorrelatedAccount(uncorrelatedAccount)
+
             if (identicalMatch) {
                 logger.debug(lm(`Identical match found.`, c, 1))
                 uniqueAccount = this.accounts.find((x) => x.identityId === identicalMatch.id) as Account
@@ -731,18 +782,12 @@ export class ContextHelper {
                 attributes.statuses.push(status)
                 attributes.accounts.push(uncorrelatedAccount.id)
                 attributes.history.push(message)
-                replaceArrayItem(attributes.statuses, 'edited')
+                deleteArrayItem(attributes.statuses, 'edited')
                 // Check if similar match exists
             } else {
-                let similarMatches: {
-                    identity: IdentityDocument
-                    score: Map<string, string>
-                }[] = []
                 logger.debug(
                     lm(`Checking similar matches for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id})`, c, 1)
                 )
-
-                similarMatches = this.findSimilarMatches(uncorrelatedAccount)
 
                 if (similarMatches.length > 0) {
                     logger.debug(lm(`Similar matches found`, c, 1))
@@ -785,7 +830,7 @@ export class ContextHelper {
         return uniqueForm
     }
 
-    async sendEmail(email: Email) {
+    async sendEmail(email: ReviewEmail) {
         await this.client.testWorkflow(this.emailer!.id!, email)
     }
 

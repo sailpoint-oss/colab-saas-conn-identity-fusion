@@ -14,10 +14,12 @@ import { FORM_NAME, MSDAY, PADDING } from '../constants'
 import { AxiosError } from 'axios'
 
 import MarkdownIt from 'markdown-it'
+import { AccountAnalysis, SimilarAccountMatch } from '../model/account'
 
 export const md = MarkdownIt({
     breaks: true,
     xhtmlOut: true,
+    linkify: true,
 })
 
 //================ MISC ================
@@ -29,7 +31,7 @@ export const capitalizeFirstLetter = (str: string) => {
     return str.charAt(0).toUpperCase() + str.slice(1)
 }
 
-export const replaceArrayItem = (array: any[], item: any) => {
+export const deleteArrayItem = (array: any[], item: any) => {
     array.splice(array.indexOf(item, 1))
 }
 
@@ -624,3 +626,32 @@ export const buildReviewFromFormInstance = (instance: FormInstanceResponseBeta):
 
 //     return schema
 // }
+
+export const stringifyScore = (score: Map<string, string>): string => {
+    const keys = Array.from(score.keys())
+    const str = keys.map((x) => `${x} (${score.get(x)})`).join(' ,')
+
+    return str
+}
+
+export const stringifyIdentity = (identity: IdentityDocument, url: string): string => {
+    const displayName = `${identity.displayName} **[${identity.attributes!.uid}](${url}/${identity.id}/details/attributes)**)`
+
+    return displayName
+}
+
+export const buildReport = (analyses: AccountAnalysis[], attributes: string[]): string => {
+    let report = '\n'
+    report += '| ' + ['ID', 'Name', 'Source name', ...attributes, 'Result'].join(' | ') + ' |\n'
+    report += '|' + ' --- |'.repeat(4 + attributes.length) + '\n '
+    for (const analysis of analyses) {
+        const attributeValues = attributes.map((x) => analysis.account.attributes![x])
+        const { nativeIdentity, name, sourceName } = analysis.account
+        const result = analysis.results.map((x) => `- ${x}`).join('\n')
+        const record = '| ' + [nativeIdentity, name, sourceName, ...attributeValues, result].join(' | ') + ' |\n'
+        report += record
+    }
+    report = md.render(report)
+
+    return report
+}

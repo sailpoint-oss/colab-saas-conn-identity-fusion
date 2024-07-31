@@ -1,6 +1,6 @@
 import { AccountSchema, Attributes, StdAccountListOutput } from '@sailpoint/connector-sdk'
-import { Account } from 'sailpoint-api-client'
-import { combineArrays, replaceArrayItem } from '../utils'
+import { Account, IdentityDocument } from 'sailpoint-api-client'
+import { combineArrays, deleteArrayItem } from '../utils'
 
 export class UniqueAccount implements StdAccountListOutput {
     identity: string
@@ -18,7 +18,7 @@ export class UniqueAccount implements StdAccountListOutput {
         if (accountsCount === 0 && !statuses.includes('reviewer')) {
             this.attributes.statuses = combineArrays(statuses, ['orphan'])
         } else if (statuses.includes('orphan')) {
-            replaceArrayItem(statuses, 'orphan')
+            deleteArrayItem(statuses, 'orphan')
         }
 
         if (schema) {
@@ -37,4 +37,16 @@ export class UniqueAccount implements StdAccountListOutput {
         //     this.attributes.uuid = account.name
         // }
     }
+}
+
+export type SimilarAccountMatch = {
+    identity: IdentityDocument
+    score: Map<string, string>
+}
+
+export type AccountAnalysis = {
+    account: Account
+    results: string[]
+    identicalMatch: IdentityDocument | undefined
+    similarMatches: SimilarAccountMatch[]
 }

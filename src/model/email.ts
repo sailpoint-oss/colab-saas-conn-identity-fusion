@@ -1,7 +1,7 @@
 import { FormInstanceResponseBeta, IdentityDocument, Source, TestWorkflowRequestBeta } from 'sailpoint-api-client'
 import { md } from '../utils'
 
-export class Email implements TestWorkflowRequestBeta {
+export class ReviewEmail implements TestWorkflowRequestBeta {
     input: object
     constructor(recipient: IdentityDocument, formName: string, instance: FormInstanceResponseBeta) {
         const subject = formName
@@ -30,6 +30,18 @@ export class ErrorEmail implements TestWorkflowRequestBeta {
         const body = error
         this.input = {
             recipients: [recipient],
+            subject,
+            body,
+        }
+    }
+}
+
+export class ReportEmail implements TestWorkflowRequestBeta {
+    input: object
+    constructor(body: string, recipient: IdentityDocument) {
+        const subject = `Identity Fusion report`
+        this.input = {
+            recipients: [recipient.attributes!.email],
             subject,
             body,
         }

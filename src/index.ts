@@ -17,12 +17,13 @@ import {
     readConfig,
 } from '@sailpoint/connector-sdk'
 import { Account, IdentityDocument } from 'sailpoint-api-client'
-import { Email } from './model/email'
-import { buildReviewFromFormInstance, datedMessage, getFormValue, opLog, replaceArrayItem } from './utils'
+import { ReportEmail, ReviewEmail } from './model/email'
+import { buildReviewFromFormInstance, datedMessage, getFormValue, opLog, deleteArrayItem, buildReport } from './utils'
 
 import { ContextHelper } from './contextHelper'
 import { PROCESSINGWAIT } from './constants'
 import { UniqueAccount } from './model/account'
+import { Config } from './model/config'
 
 // Connector must be exported as module property named connector
 export const connector = async () => {
@@ -109,7 +110,7 @@ export const connector = async () => {
                                     attributes.accounts.push(account)
                                     attributes.history.push(msg)
                                     attributes.statuses.push('manual')
-                                    replaceArrayItem(attributes.statuses, 'edited')
+                                    deleteArrayItem(attributes.statuses, 'edited')
                                 } else {
                                     logger.debug(`Creating new unique account.`)
                                     const pendingAccount = pendingAccounts.find((x) => x.id === account) as Account
@@ -140,7 +141,7 @@ export const connector = async () => {
 
                     const index = pendingAccounts.findIndex((x) => x.id === accountID)
                     if (index > -1) {
-                        replaceArrayItem(pendingAccounts, index)
+                        deleteArrayItem(pendingAccounts, index)
                     }
                     if (finished || cancelled) {
                         try {
@@ -221,7 +222,7 @@ export const connector = async () => {
                                 )
                                 // Send notifications
                                 logger.info(`Sending email notifications for ${form.name}`)
-                                const email = new Email(reviewer, form.name!, currentFormInstance)
+                                const email = new ReviewEmail(reviewer, form.name!, currentFormInstance)
                                 await ctx.sendEmail(email)
                             }
                         }
@@ -360,17 +361,28 @@ export const connector = async () => {
                         case 'actions':
                             switch (change.value) {
                                 case 'reset':
-                                    account = await ctx.resetUniqueID(account)
+                                    await ctx.resetUniqueID(account)
                                     break
 
                                 case 'edit':
                                     break
 
                                 case 'report':
+                                    await ctx.init()
+                                    const fusionAccount = (await ctx.getFusionAccount(input.identity)) as Account
+                                    const identity = ctx.getIdentityById(fusionAccount.identityId!) as IdentityDocument
+                                    const authoritativeAccounts = await ctx.listAuthoritativeAccounts()
+                                    const pendingAccounts = authoritativeAccounts.filter((x) => x.uncorrelated === true)
+                                    const analysis = await Promise.all(
+                                        pendingAccounts.map((x) => ctx.analyzeUncorrelatedAccount(x))
+                                    )
+                                    const report = buildReport(analysis, config.merging_attributes)
+                                    const email = new ReportEmail(report, identity)
+                                    ctx.sendEmail(email)
                                     break
 
                                 default:
-                                    const sourceIDs = ctx.listSources().map((x) => x.id)
+                                    const sourceIDs = ctx.listSources().map((x) => x.id!)
                                     const statuses = account.attributes.statuses as string[]
                                     const actions = account.attributes.actions as string[]
                                     switch (change.op) {
@@ -386,8 +398,10 @@ export const connector = async () => {
                                             }
                                             break
                                         case AttributeChangeOp.Remove:
-                                            replaceArrayItem(statuses, 'reviewer')
-                                            replaceArrayItem(actions, change.value)
+                                            deleteArrayItem(actions, change.value)
+                                            if (!sourceIDs.some((x) => actions.includes(x))) {
+                                                deleteArrayItem(statuses, 'reviewer')
+                                            }
                                             break
                                         case AttributeChangeOp.Set:
                                             const now = new Date().toISOString().split('T')[0]

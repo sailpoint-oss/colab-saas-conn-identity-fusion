@@ -74,6 +74,7 @@ export class ContextHelper {
     private errors: string[]
     private uuids: string[]
     private baseUrl: string
+    private initiated: string | undefined
 
     constructor(config: Config) {
         this.config = config
@@ -109,21 +110,34 @@ export class ContextHelper {
     }
 
     async init(skipData?: boolean) {
-        logger.debug(lm(`Looking for connector instance`, this.c))
-        const id = this.config?.spConnectorInstanceId as string
-        const allSources = await this.client.listSources()
-        this.source = allSources.find((x) => (x.connectorAttributes as any).spConnectorInstanceId === id)
-        this.sources = allSources.filter((x) => this.config?.sources.includes(x.name))
+        if (!this.initiated) {
+            logger.debug(lm(`Looking for connector instance`, this.c))
+            const id = this.config?.spConnectorInstanceId as string
+            const allSources = await this.client.listSources()
+            this.source = allSources.find((x) => (x.connectorAttributes as any).spConnectorInstanceId === id)
+            this.sources = allSources.filter((x) => this.config?.sources.includes(x.name))
 
-        if (!this.source) {
-            throw new ConnectorError('No connector source was found on the tenant.')
+            if (!this.source) {
+                throw new ConnectorError('No connector source was found on the tenant.')
+            }
+
+            const owner = getOwnerFromSource(this.source)
+            const wfName = `${WORKFLOW_NAME} (${this.config!.cloudDisplayName})`
+            this.emailer = await this.getEmailWorkflow(wfName, owner)
+
+            this.identities = []
+            this.accounts = []
+            this.authoritativeAccounts = []
+            this.currentIdentities = []
+            this.forms = []
+            this.formInstances = []
+            this.reviewerIDs = await this.buildReviewersMap()
+            this.errors = []
+
+            this.initiated = 'partial'
         }
 
-        const owner = getOwnerFromSource(this.source)
-        const wfName = `${WORKFLOW_NAME} (${this.config!.cloudDisplayName})`
-        this.emailer = await this.getEmailWorkflow(wfName, owner)
-
-        if (!skipData) {
+        if (!skipData && this.initiated === 'partial') {
             this.identities = await this.listIdentities()
             this.accounts = await this.listAccounts()
             const identityIDs = this.accounts.map((x) => x.identityId)
@@ -140,18 +154,9 @@ export class ContextHelper {
                 logger.info('Compiling current IDs for tenant scope.')
                 this.ids = this.identities.map((x) => x.attributes!.uid)
             }
-        } else {
-            this.identities = []
-            this.accounts = []
-            this.authoritativeAccounts = []
-            this.currentIdentities = []
-            this.forms = []
-            this.formInstances = []
+
+            this.initiated = 'full'
         }
-
-        this.reviewerIDs = await this.buildReviewersMap()
-
-        this.errors = []
     }
 
     getSource(): Source {
@@ -337,7 +342,8 @@ export class ContextHelper {
         const lastConfigChange = new Date(this.source!.modified!).getTime()
         const lastModified = new Date(account.modified!).getTime()
         const newSourceData = sourceAccounts.find((x) => new Date(x.modified!).getTime() > lastModified) ? true : false
-        const needsRefresh = newSourceData || lastModified < lastConfigChange
+        const needsRefresh =
+            (newSourceData || lastModified < lastConfigChange) && !account.attributes!.statuses.includes('edited')
 
         if (sourceAccounts.length === 0) sourceAccounts.push(account)
 
@@ -723,13 +729,12 @@ export class ContextHelper {
         let results: string[] = []
         const normalizedAccount = normalizeAccountAttributes(uncorrelatedAccount, this.config.merging_map)
         const identicalMatch = this.findIdenticalMatch(normalizedAccount)
-        const url = this.baseUrl + '/ui/a/admin/identities'
         let similarMatches: SimilarAccountMatch[] = []
         if (identicalMatch) {
             logger.debug(
                 lm(`Checking identical match for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id}).`, c, 1)
             )
-            results.push(`Identical to ${stringifyIdentity(identicalMatch, url)}`)
+            results.push(`Identical to ${stringifyIdentity(identicalMatch, this.baseUrl)}`)
             logger.debug(lm(`Identical match found.`, c, 1))
             // Check if similar match exists
         } else {
@@ -741,7 +746,8 @@ export class ContextHelper {
             if (similarMatches.length > 0) {
                 results = results.concat(
                     similarMatches.map(
-                        (x) => `Similar to ${stringifyIdentity(x.identity, url)} [ ${stringifyScore(x.score)} ]`
+                        (x) =>
+                            `Similar to ${stringifyIdentity(x.identity, this.baseUrl)} [ ${stringifyScore(x.score)} ]`
                     )
                 )
                 logger.debug(lm(`Similar matches found`, c, 1))
@@ -1161,6 +1167,18 @@ export class ContextHelper {
     //     }
     // }
 
+    processReviewFormInstanceEdits(formInstance: FormInstanceResponseBeta, account: Account): boolean {
+        let edited = false
+        for (const attribute of this.config.merging_attributes) {
+            if (formInstance.formData![attribute] !== account.attributes![attribute]) {
+                account.attributes![attribute] = formInstance.formData![attribute]
+                edited = true
+            }
+        }
+
+        return edited
+    }
+
     buildStatusEntitlements(): Status[] {
         const statusEntitlements = statuses.map((x) => new Status(x))
         // const sourceInput: StatusSource[] = this.sources.map(({ id, name }) => ({
@@ -1178,8 +1196,8 @@ export class ContextHelper {
         const actionEntitlements = actions.map((x) => new Action(x))
         const sourceInput: ActionSource[] = this.sources.map(({ id, name }) => ({
             id: id!,
-            name: `${name} source reviewer`,
-            description: `Reviewer for source ${name} potential duplicated identities`,
+            name: `${name} reviewer`,
+            description: `Reviewer for source ${name} potentially duplicated identities`,
         }))
         const sourceEntitlements = sourceInput.map((x) => new Action(x))
         const entitlements = [...actionEntitlements, ...sourceEntitlements]

@@ -14,12 +14,10 @@ import { FORM_NAME, MSDAY, PADDING } from '../constants'
 import { AxiosError } from 'axios'
 
 import MarkdownIt from 'markdown-it'
-import { AccountAnalysis, SimilarAccountMatch } from '../model/account'
 
 export const md = MarkdownIt({
     breaks: true,
     xhtmlOut: true,
-    linkify: true,
 })
 
 //================ MISC ================
@@ -635,23 +633,24 @@ export const stringifyScore = (score: Map<string, string>): string => {
 }
 
 export const stringifyIdentity = (identity: IdentityDocument, url: string): string => {
-    const displayName = `${identity.displayName} **[${identity.attributes!.uid}](${url}/${identity.id}/details/attributes)**)`
+    const displayName = `${identity.displayName} **[${identity.attributes!.uid}](${url}/ui/a/admin/identities/${identity.id}/details/attributes)**)`
 
     return displayName
 }
 
-export const buildReport = (analyses: AccountAnalysis[], attributes: string[]): string => {
-    let report = '\n'
-    report += '| ' + ['ID', 'Name', 'Source name', ...attributes, 'Result'].join(' | ') + ' |\n'
-    report += '|' + ' --- |'.repeat(4 + attributes.length) + '\n '
-    for (const analysis of analyses) {
-        const attributeValues = attributes.map((x) => analysis.account.attributes![x])
-        const { nativeIdentity, name, sourceName } = analysis.account
-        const result = analysis.results.map((x) => `- ${x}`).join('\n')
-        const record = '| ' + [nativeIdentity, name, sourceName, ...attributeValues, result].join(' | ') + ' |\n'
-        report += record
-    }
-    report = md.render(report)
+// export const buildReport = (analyses: AccountAnalysis[], attributes: string[]): string => {
+//     let report = '\n'
+//     const attributeNames = attributes.map((x) => capitalizeFirstLetter(x))
+//     report += '| ' + ['ID', 'Name', 'Source name', ...attributeNames, 'Result'].join(' | ') + ' |\n'
+//     report += '|' + ' --- |'.repeat(4 + attributes.length) + '\n '
+//     for (const analysis of analyses) {
+//         const attributeValues = attributes.map((x) => analysis.account.attributes![x])
+//         const { nativeIdentity, name, sourceName } = analysis.account
+//         const result = analysis.results.map((x) => `- ${x}`).join('\n')
+//         const record = '| ' + [nativeIdentity, name, sourceName, ...attributeValues, result].join(' | ') + ' |\n'
+//         report += record
+//     }
+//     report = md.render(report)
 
-    return report
-}
+//     return report
+// }

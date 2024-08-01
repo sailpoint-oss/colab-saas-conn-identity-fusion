@@ -18,12 +18,11 @@ import {
 } from '@sailpoint/connector-sdk'
 import { Account, IdentityDocument } from 'sailpoint-api-client'
 import { ReportEmail, ReviewEmail } from './model/email'
-import { buildReviewFromFormInstance, datedMessage, getFormValue, opLog, deleteArrayItem, buildReport } from './utils'
+import { buildReviewFromFormInstance, datedMessage, getFormValue, opLog, deleteArrayItem } from './utils'
 
 import { ContextHelper } from './contextHelper'
 import { PROCESSINGWAIT } from './constants'
 import { UniqueAccount } from './model/account'
-import { Config } from './model/config'
 
 // Connector must be exported as module property named connector
 export const connector = async () => {
@@ -92,6 +91,7 @@ export const connector = async () => {
                     formInstances: for (const currentFormInstance of instances) {
                         logger.debug(`Processing form instance ${currentForm.name} (${currentFormInstance.id}).`)
                         const formName = currentForm.name
+                        let uniqueAccount: Account | undefined
 
                         switch (currentFormInstance.state) {
                             case 'COMPLETED':
@@ -99,11 +99,13 @@ export const connector = async () => {
                                     await ctx.processFormInstance(currentFormInstance)
                                 logger.debug(`Result: ${message}.`)
 
+                                currentFormInstance.formData
+
                                 const identityMatch = await ctx.getIdentityByUID(decision)
 
                                 if (identityMatch) {
                                     logger.debug(`Updating existing account for ${decision}.`)
-                                    const uniqueAccount = (await ctx.getAccountByIdentity(identityMatch)) as Account
+                                    uniqueAccount = (await ctx.getAccountByIdentity(identityMatch)) as Account
                                     const uncorrelatedAccount = (await ctx.getAccount(accountID)) as Account
                                     const msg = datedMessage(message, uncorrelatedAccount)
                                     const attributes = uniqueAccount.attributes!
@@ -116,7 +118,7 @@ export const connector = async () => {
                                     const pendingAccount = pendingAccounts.find((x) => x.id === account) as Account
 
                                     try {
-                                        const uniqueAccount = await ctx.buildUniqueAccount(
+                                        uniqueAccount = await ctx.buildUniqueAccount(
                                             pendingAccount,
                                             'authorized',
                                             message
@@ -125,6 +127,13 @@ export const connector = async () => {
                                         ctx.handleError(e)
                                     }
                                 }
+
+                                if (uniqueAccount) {
+                                    if (ctx.processReviewFormInstanceEdits(currentFormInstance, uniqueAccount)) {
+                                        uniqueAccount.attributes!.statuses.push('edited')
+                                    }
+                                }
+
                                 finished = true
                                 ctx.deleteFormInstance(currentFormInstance)
                                 break formInstances
@@ -376,8 +385,8 @@ export const connector = async () => {
                                     const analysis = await Promise.all(
                                         pendingAccounts.map((x) => ctx.analyzeUncorrelatedAccount(x))
                                     )
-                                    const report = buildReport(analysis, config.merging_attributes)
-                                    const email = new ReportEmail(report, identity)
+
+                                    const email = new ReportEmail(analysis, config.merging_attributes, identity)
                                     ctx.sendEmail(email)
                                     break
 

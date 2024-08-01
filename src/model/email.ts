@@ -1,19 +1,22 @@
 import { FormInstanceResponseBeta, IdentityDocument, Source, TestWorkflowRequestBeta } from 'sailpoint-api-client'
-import { md } from '../utils'
+import { capitalizeFirstLetter, md } from '../utils'
+import { AccountAnalysis } from './account'
 
 export class ReviewEmail implements TestWorkflowRequestBeta {
     input: object
     constructor(recipient: IdentityDocument, formName: string, instance: FormInstanceResponseBeta) {
         const subject = formName
-        let body = ''
-        body += md.render(`Dear ${recipient.displayName},`)
-        body += md.render(
-            `The system has detected a potential match on one or more existing identities that needs your review. If this is not a match please select ‘This is a New Identity’.`
-        )
-        body += md.render(`Thank you,`)
-        body += md.render(`Please use the link below to review the identities.`)
-        body += md.render(instance.standAloneFormUrl!)
-        body += md.render(`IAM/Security Team`)
+        let body = `Dear ${recipient.displayName},
+        The system has detected a potential match on one or more existing identities that needs your review. If this is not a match please select ‘This is a New Identity’.
+        
+        Please use the link below to review the identities.
+        ${instance.standAloneFormUrl!}
+        
+        Thank you,
+        IAM/Security Team
+        `
+
+        body = md.render(body)
 
         this.input = {
             recipients: [recipient.attributes!.email],
@@ -38,8 +41,32 @@ export class ErrorEmail implements TestWorkflowRequestBeta {
 
 export class ReportEmail implements TestWorkflowRequestBeta {
     input: object
-    constructor(body: string, recipient: IdentityDocument) {
+    constructor(analyses: AccountAnalysis[], attributes: string[], recipient: IdentityDocument) {
         const subject = `Identity Fusion report`
+
+        let body = '\n'
+        const attributeNames = attributes.map((x) => capitalizeFirstLetter(x))
+        body += '| ' + ['ID', 'Name', 'Source name', ...attributeNames, 'Result'].join(' | ') + ' |\n'
+        body += '|' + ' --- |'.repeat(4 + attributes.length) + '\n '
+        for (const analysis of analyses) {
+            const attributeValues = attributes.map((x) => analysis.account.attributes![x])
+            const { nativeIdentity, name, sourceName } = analysis.account
+            const result = analysis.results.map((x) => `- ${x}`).join('\n')
+            const record = '| ' + [nativeIdentity, name, sourceName, ...attributeValues, result].join(' | ') + ' |\n'
+            body += record
+        }
+
+        // table = md.render(table)
+        body = md.render(body)
+        body = body.replace(
+            /<table>/g,
+            '<table style="border-collapse: collapse;width: 100%;border: 1px solid #ccc;font-family: Arial, sans-serif;">'
+        )
+        body = body.replace(
+            /<th>/g,
+            '<th style="padding: 12px 15px;text-align: left;border-bottom: 1px solid #ddd;background-color: #4285f4; /* Blueish header color */color: white;">'
+        )
+        body = body.replace(/<td>/g, '<th style="padding: 12px 15px;text-align: left;border-bottom: 1px solid #ddd;">')
         this.input = {
             recipients: [recipient.attributes!.email],
             subject,

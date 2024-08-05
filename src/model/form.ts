@@ -254,7 +254,7 @@ const buildUniqueFormConditions = (
                     },
                 },
                 {
-                    effectType: 'DISABLE',
+                    effectType: 'ENABLE',
                     config: {
                         element: attribute as any,
                     },

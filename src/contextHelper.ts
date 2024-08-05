@@ -44,7 +44,7 @@ import {
 import { IDENTITYNOTFOUNDRETRIES, IDENTITYNOTFOUNDWAIT, WORKFLOW_NAME, reservedAttributes } from './constants'
 import { UniqueForm } from './model/form'
 import { buildUniqueID } from './utils/unique'
-import { ReviewEmail, ErrorEmail } from './model/email'
+import { ReviewEmail, ErrorEmail, ReportEmail } from './model/email'
 import { AccountAnalysis, SimilarAccountMatch, UniqueAccount } from './model/account'
 import { AxiosError } from 'axios'
 import { v4 as uuidv4 } from 'uuid'
@@ -75,6 +75,7 @@ export class ContextHelper {
     private uuids: string[]
     private baseUrl: string
     private initiated: string | undefined
+    private mergingEnabled: boolean = false
 
     constructor(config: Config) {
         this.config = config
@@ -131,15 +132,15 @@ export class ContextHelper {
             this.currentIdentities = []
             this.forms = []
             this.formInstances = []
-            this.reviewerIDs = await this.buildReviewersMap()
             this.errors = []
-
             this.initiated = 'partial'
         }
 
         if (!skipData && this.initiated === 'partial') {
             this.identities = await this.listIdentities()
             this.accounts = await this.listAccounts()
+            this.reviewerIDs = await this.buildReviewersMap()
+            this.mergingEnabled = this.config.merging_isEnabled && this.listAllReviewerIDs().length > 0
             const identityIDs = this.accounts.map((x) => x.identityId)
             this.uuids = this.accounts.map((x) => x.attributes!.uuid).filter((x) => x !== undefined)
             this.authoritativeAccounts = await this.listAuthoritativeAccounts()
@@ -355,8 +356,10 @@ export class ContextHelper {
 
                 attributes: for (const attrDef of schema.attributes) {
                     if (!reservedAttributes.includes(attrDef.name)) {
+                        delete attributes![attrDef.name]
                         const attrConf = this.config.merging_map.find((x) => x.identity === attrDef.name)
                         const attributeMerge = attrConf?.attributeMerge || this.config.attributeMerge
+                        let multiValue: string[] = []
                         let firstSource = true
                         accounts: for (const sourceAccount of sourceAccounts) {
                             let values: any[] = []
@@ -383,36 +386,14 @@ export class ContextHelper {
                             }
 
                             if (values.length > 0) {
+                                values = values.map((x) => attrSplit(x).flat())
                                 let lst: string[]
-                                let previousList: string[]
+                                // let previousList: string[] = []
                                 if (['multi', 'concatenate'].includes(attributeMerge)) {
-                                    if (!attributes![attrDef.name]) {
-                                        attributes![attrDef.name] = []
-                                    }
+                                    multiValue = multiValue.concat(values).flat()
                                 }
                                 values: for (const value of values) {
                                     switch (attributeMerge) {
-                                        case 'multi':
-                                            previousList = [].concat(attributes![attrDef.name])
-                                            if (previousList.length === 0) {
-                                                lst = [].concat(value)
-                                            } else if (previousList.length > 1) {
-                                                lst = [...previousList, value]
-                                            } else {
-                                                lst = [...attrSplit(previousList[0]), value]
-                                            }
-                                            attributes![attrDef.name] = Array.from(new Set(lst)).sort()
-                                            break
-
-                                        case 'concatenate':
-                                            lst = []
-                                            previousList = [].concat(attributes![attrDef.name])
-                                            for (const item of previousList) {
-                                                lst = lst.concat(attrSplit(item))
-                                            }
-                                            lst = lst.concat(attrSplit(value))
-                                            attributes![attrDef.name] = attrConcat(lst)
-                                            break
                                         case 'first':
                                             if (firstSource) {
                                                 attributes![attrDef.name] = value
@@ -434,50 +415,62 @@ export class ContextHelper {
                                 firstSource = false
                             }
                         }
-                    }
-                }
-            }
+                        switch (attributeMerge) {
+                            case 'multi':
+                                attributes![attrDef.name] = [...new Set(multiValue)].sort()
+                                break
 
-            attributes!.statuses = Array.from(new Set(attributes!.statuses))
+                            case 'concatenate':
+                                attributes![attrDef.name] = attrConcat([...new Set(multiValue)].sort())
+                                break
 
-            if (account.uncorrelated) {
-                logger.debug(lm(`New account. Needs to be enabled.`, c, 2))
-            } else {
-                logger.debug(lm(`Existing account. Enforcing defined correlation.`, c, 1))
-                let identity: IdentityDocument | IdentityBeta | undefined
-                let accounts: Account[] | BaseAccount[]
-                identity = this.identities.find((x) => x.id === account.identityId) as IdentityDocument
-                if (!identity) {
-                    let count = 0
-                    let wait = IDENTITYNOTFOUNDWAIT
-                    while (!identity) {
-                        identity = await this.client.getIdentity(account.identityId!)
-                        if (!identity) {
-                            if (++count > IDENTITYNOTFOUNDRETRIES)
-                                throw new Error(
-                                    `Identity ${account.identityId} for account ${account.nativeIdentity} not found`
-                                )
-
-                            logger.warn(lm(`Identity ID ${account.identityId} not found. Re-trying...`, c, 1))
-                            await sleep(wait)
-                            wait = wait + IDENTITYNOTFOUNDWAIT
+                            default:
+                                break
                         }
                     }
-                    accounts = await this.client.getAccountsByIdentity(identity!.id!)
+                }
+
+                attributes!.statuses = Array.from(new Set(attributes!.statuses))
+
+                if (account.uncorrelated) {
+                    logger.debug(lm(`New account. Needs to be enabled.`, c, 2))
                 } else {
-                    accounts = (identity as IdentityDocument).accounts!
-                }
+                    logger.debug(lm(`Existing account. Enforcing defined correlation.`, c, 1))
+                    let identity: IdentityDocument | IdentityBeta | undefined
+                    let accounts: Account[] | BaseAccount[]
+                    identity = this.identities.find((x) => x.id === account.identityId) as IdentityDocument
+                    if (!identity) {
+                        let count = 0
+                        let wait = IDENTITYNOTFOUNDWAIT
+                        while (!identity) {
+                            identity = await this.client.getIdentity(account.identityId!)
+                            if (!identity) {
+                                if (++count > IDENTITYNOTFOUNDRETRIES)
+                                    throw new Error(
+                                        `Identity ${account.identityId} for account ${account.nativeIdentity} not found`
+                                    )
 
-                for (const acc of account.attributes!.accounts as string[]) {
-                    const uid: string = (identity.attributes as any).uid
-                    try {
-                        if (!accounts.find((x) => x.id === acc)) {
-                            logger.debug(lm(`Correlating ${acc} account with ${uid}.`, c, 1))
-                            const response = await this.client.correlateAccount(identity.id as string, acc)
+                                logger.warn(lm(`Identity ID ${account.identityId} not found. Re-trying...`, c, 1))
+                                await sleep(wait)
+                                wait = wait + IDENTITYNOTFOUNDWAIT
+                            }
                         }
-                    } catch (e) {
-                        logger.error(lm(`Failed to correlate ${acc} account with ${uid}.`, c, 1))
-                        account.attributes!.accounts = account.attributes!.accounts.filter((x: string) => x !== acc)
+                        accounts = await this.client.getAccountsByIdentity(identity!.id!)
+                    } else {
+                        accounts = (identity as IdentityDocument).accounts!
+                    }
+
+                    for (const acc of account.attributes!.accounts as string[]) {
+                        const uid: string = (identity.attributes as any).uid
+                        try {
+                            if (!accounts.find((x) => x.id === acc)) {
+                                logger.debug(lm(`Correlating ${acc} account with ${uid}.`, c, 1))
+                                const response = await this.client.correlateAccount(identity.id as string, acc)
+                            }
+                        } catch (e) {
+                            logger.error(lm(`Failed to correlate ${acc} account with ${uid}.`, c, 1))
+                            account.attributes!.accounts = account.attributes!.accounts.filter((x: string) => x !== acc)
+                        }
                     }
                 }
             }
@@ -488,6 +481,17 @@ export class ContextHelper {
         } catch (error) {
             logger.error(error as string)
         }
+    }
+
+    async buildReport(id: string) {
+        const fusionAccount = (await this.getFusionAccount(id)) as Account
+        const identity = this.getIdentityById(fusionAccount.identityId!) as IdentityDocument
+        const authoritativeAccounts = await this.listAuthoritativeAccounts()
+        const pendingAccounts = authoritativeAccounts.filter((x) => x.uncorrelated === true)
+        const analysis = await Promise.all(pendingAccounts.map((x) => this.analyzeUncorrelatedAccount(x)))
+
+        const email = new ReportEmail(analysis, this.config.merging_attributes, identity)
+        this.sendEmail(email)
     }
 
     async buildUniqueAccount(account: Account, status: string | string[], msg: string): Promise<Account> {
@@ -657,7 +661,7 @@ export class ContextHelper {
     }
 
     async isMergingEnabled(): Promise<boolean> {
-        return this.config.merging_isEnabled === true && this.listAllReviewerIDs().length > 0
+        return this.config.merging_isEnabled && this.listAllReviewerIDs().length > 0
     }
 
     private findIdenticalMatch(account: Account): IdentityDocument | undefined {
@@ -774,9 +778,8 @@ export class ContextHelper {
         let uniqueForm: UniqueForm | undefined
         let status: string
         let message = ''
-        const merging = await this.isMergingEnabled()
 
-        if (merging) {
+        if (this.mergingEnabled) {
             const { identicalMatch, similarMatches } = await this.analyzeUncorrelatedAccount(uncorrelatedAccount)
 
             if (identicalMatch) {

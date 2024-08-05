@@ -302,6 +302,12 @@ export const connector = async () => {
 
     const stdAccountCreate: StdAccountCreateHandler = async (context, input, res) => {
         opLog(config, input)
+        const entitlementSelectionError = `Only action source reviewer and report entitlements can be requested on account creation`
+        let message: string
+
+        if (input.attributes.statuses) {
+            throw new ConnectorError(entitlementSelectionError, ConnectorErrorType.Generic)
+        }
 
         logger.info(`Creating ${input.attributes.uniqueID} account.`)
 
@@ -311,43 +317,45 @@ export const connector = async () => {
         if (input.schema) {
             ctx.loadSchema(input.schema)
         }
-        //Keepalive
-        const interval = setInterval(() => {
-            res.keepAlive()
-        }, PROCESSINGWAIT)
 
-        try {
-            if (input.attributes.actions && input.attributes.actions.length > 0) {
-                const sourceIDs = ctx.listSources().map((x) => x.id)
-                const actions = [].concat(input.attributes.actions)
-                //Check that all requests are reviewer requests
-                if (!actions.some((x) => !sourceIDs.includes(x))) {
-                    const identity = (await ctx.getIdentityByUID(input.attributes.uniqueID)) as IdentityDocument
-                    const originAccount = (await ctx.getAccountByIdentity(identity)) as Account
-                    const uniqueAccount = await ctx.buildUniqueAccount(originAccount, 'reviewer', '')
-                    uniqueAccount.attributes!.actions = []
-                    for (const action of actions) {
-                        const sourceName = ctx.getSourceNameByID(action)
-                        const message = datedMessage(`Reviewer assigned for ${sourceName} source`, originAccount)
-                        uniqueAccount.attributes!.actions.push(action)
-                        uniqueAccount.attributes!.history.push(message)
-                    }
-                    ctx.setUUID(uniqueAccount)
+        const identity = (await ctx.getIdentityByUID(input.attributes.uniqueID)) as IdentityDocument
+        const originAccount = (await ctx.getAccountByIdentity(identity)) as Account
+        message = datedMessage('Created from access request', originAccount)
+        const uniqueAccount = await ctx.buildUniqueAccount(originAccount, 'manual', message)
+        ctx.setUUID(uniqueAccount)
 
-                    const account = (await ctx.refreshUniqueAccount(uniqueAccount)) as UniqueAccount
+        const actions = [].concat(input.attributes.actions)
 
-                    logger.info({ account })
-                    res.send(account)
-                }
-            } else {
-                const message = `Only reviewer entitlements can be requested on account creation`
-                throw new ConnectorError(message, ConnectorErrorType.Generic)
+        for (const action of actions) {
+            switch (action) {
+                case 'reset':
+                    throw new ConnectorError(entitlementSelectionError, ConnectorErrorType.Generic)
+                    break
+
+                case 'edit':
+                    throw new ConnectorError(entitlementSelectionError, ConnectorErrorType.Generic)
+                    break
+
+                case 'report':
+                    await ctx.init()
+                    ctx.buildReport(uniqueAccount.nativeIdentity)
+                    break
+
+                default:
+                    const sourceName = ctx.getSourceNameByID(action)
+                    const message = datedMessage(`Reviewer assigned for ${sourceName} source`, originAccount)
+                    uniqueAccount.attributes!.actions.push(action)
+                    uniqueAccount.attributes!.statuses.push('reviewer')
+                    uniqueAccount.attributes!.history.push(message)
+
+                    break
             }
-        } catch (error) {
-            logger.error(error)
-        } finally {
-            clearInterval(interval)
         }
+
+        const account = (await ctx.refreshUniqueAccount(uniqueAccount)) as UniqueAccount
+
+        logger.info({ account })
+        res.send(account)
     }
 
     const stdAccountUpdate: StdAccountUpdateHandler = async (context, input, res) => {
@@ -363,87 +371,74 @@ export const connector = async () => {
         }
         let account = await ctx.buildUniqueAccountFromID(input.identity)
         let message: string
-        try {
-            if (input.changes) {
-                for (const change of input.changes) {
-                    switch (change.attribute) {
-                        case 'actions':
-                            switch (change.value) {
-                                case 'reset':
-                                    await ctx.resetUniqueID(account)
-                                    break
 
-                                case 'edit':
-                                    break
+        if (input.changes) {
+            for (const change of input.changes) {
+                switch (change.attribute) {
+                    case 'actions':
+                        switch (change.value) {
+                            case 'reset':
+                                await ctx.resetUniqueID(account)
+                                break
 
-                                case 'report':
-                                    await ctx.init()
-                                    const fusionAccount = (await ctx.getFusionAccount(input.identity)) as Account
-                                    const identity = ctx.getIdentityById(fusionAccount.identityId!) as IdentityDocument
-                                    const authoritativeAccounts = await ctx.listAuthoritativeAccounts()
-                                    const pendingAccounts = authoritativeAccounts.filter((x) => x.uncorrelated === true)
-                                    const analysis = await Promise.all(
-                                        pendingAccounts.map((x) => ctx.analyzeUncorrelatedAccount(x))
-                                    )
+                            case 'edit':
+                                break
 
-                                    const email = new ReportEmail(analysis, config.merging_attributes, identity)
-                                    ctx.sendEmail(email)
-                                    break
+                            case 'report':
+                                await ctx.init()
+                                ctx.buildReport(input.identity)
+                                break
 
-                                default:
-                                    const sourceIDs = ctx.listSources().map((x) => x.id!)
-                                    const statuses = account.attributes.statuses as string[]
-                                    const actions = account.attributes.actions as string[]
-                                    switch (change.op) {
-                                        case AttributeChangeOp.Add:
-                                            if (!statuses.includes('reviewer')) {
-                                                statuses.push('reviewer')
-                                            }
-                                            if (sourceIDs.includes(change.value)) {
-                                                actions.push(change.value)
-                                            } else {
-                                                message = `Source ID ${change.value} is not a currently configured source.`
-                                                throw new ConnectorError(message, ConnectorErrorType.Generic)
-                                            }
-                                            break
-                                        case AttributeChangeOp.Remove:
-                                            deleteArrayItem(actions, change.value)
-                                            if (!sourceIDs.some((x) => actions.includes(x))) {
-                                                deleteArrayItem(statuses, 'reviewer')
-                                            }
-                                            break
-                                        case AttributeChangeOp.Set:
-                                            const now = new Date().toISOString().split('T')[0]
-                                            message = `[${now}] Account edited by attribute sync`
-                                            statuses.push('edited')
-                                            account.attributes[change.attribute] = change.value
-                                            const history = account.attributes!.history as string[]
-                                            history.push(message)
-                                            break
+                            default:
+                                const sourceIDs = ctx.listSources().map((x) => x.id!)
+                                const statuses = account.attributes.statuses as string[]
+                                const actions = account.attributes.actions as string[]
+                                switch (change.op) {
+                                    case AttributeChangeOp.Add:
+                                        if (!statuses.includes('reviewer')) {
+                                            statuses.push('reviewer')
+                                        }
+                                        if (sourceIDs.includes(change.value)) {
+                                            actions.push(change.value)
+                                        } else {
+                                            message = `Source ID ${change.value} is not a currently configured source.`
+                                            throw new ConnectorError(message, ConnectorErrorType.Generic)
+                                        }
+                                        break
+                                    case AttributeChangeOp.Remove:
+                                        deleteArrayItem(actions, change.value)
+                                        if (!sourceIDs.some((x) => actions.includes(x))) {
+                                            deleteArrayItem(statuses, 'reviewer')
+                                        }
+                                        break
+                                    case AttributeChangeOp.Set:
+                                        const now = new Date().toISOString().split('T')[0]
+                                        message = `[${now}] Account edited by attribute sync`
+                                        statuses.push('edited')
+                                        account.attributes[change.attribute] = change.value
+                                        const history = account.attributes!.history as string[]
+                                        history.push(message)
+                                        break
 
-                                        default:
-                                            break
-                                    }
-                                    break
-                            }
-                            break
-                        case 'statuses':
-                            message =
-                                'Status entitlements are not designed for assigment. Use action entitlements instead.'
-                            throw new ConnectorError(message, ConnectorErrorType.Generic)
-                        default:
-                            message = 'Operation not supported.'
-                            throw new ConnectorError(message, ConnectorErrorType.Generic)
-                    }
+                                    default:
+                                        break
+                                }
+                                break
+                        }
+                        break
+                    case 'statuses':
+                        message = 'Status entitlements are not designed for assigment. Use action entitlements instead.'
+                        throw new ConnectorError(message, ConnectorErrorType.Generic)
+                    default:
+                        message = 'Operation not supported.'
+                        throw new ConnectorError(message, ConnectorErrorType.Generic)
                 }
-                //Need to investigate about std:account:update operations without changes but adding this for the moment
-            } else if ('attributes' in input) {
-                logger.warn(
-                    'No changes detected in account update. Please report unless you used attribute sync which is not supported.'
-                )
             }
-        } catch (e) {
-            ctx.handleError(e)
+            //Need to investigate about std:account:update operations without changes but adding this for the moment
+        } else if ('attributes' in input) {
+            logger.warn(
+                'No changes detected in account update. Please report unless you used attribute sync which is not supported.'
+            )
         }
 
         logger.info({ account })

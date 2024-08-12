@@ -10,8 +10,9 @@ import {
     SourceOwner,
 } from 'sailpoint-api-client'
 import { capitalizeFirstLetter } from '../utils'
+import { UniqueAccount } from './account'
 
-const buildID = (entity: any, attribute: string): string => {
+export const buildID = (entity: any, attribute: string): string => {
     let name
     if (typeof entity === 'string') {
         name = entity
@@ -425,5 +426,70 @@ export class UniqueForm implements CreateFormDefinitionRequestBeta {
             this.formElements.push(section)
         }
         this.formConditions = buildUniqueFormConditions(attributes, targets, UniqueForm.NEW_IDENTITY)
+    }
+}
+
+const buildEditFormConditions = (attributes: string[], id: string): FormConditionBeta[] => {
+    const formConditions: FormConditionBeta[] = []
+
+    for (const attribute of attributes) {
+        formConditions.push({
+            ruleOperator: 'AND',
+            rules: [
+                {
+                    sourceType: 'INPUT',
+                    source: buildID(id, attribute),
+                    operator: 'NOT_EM',
+                    valueType: 'STRING',
+                    value: null as any,
+                },
+            ],
+            effects: [
+                {
+                    effectType: 'SET_DEFAULT_VALUE',
+                    config: {
+                        defaultValueLabel: buildID(id, attribute) as any,
+                        element: attribute as any,
+                    },
+                },
+                {
+                    effectType: 'ENABLE',
+                    config: {
+                        element: attribute as any,
+                    },
+                },
+            ],
+        })
+    }
+
+    return formConditions
+}
+
+export class EditForm implements CreateFormDefinitionRequestBeta {
+    name: string
+    formInput: FormDefinitionInputBeta[] | undefined
+    formElements: FormElementBeta[] | undefined
+    formConditions: FormConditionBeta[] | undefined
+    owner: FormOwnerBeta
+
+    constructor(name: string, owner: SourceOwner, account: UniqueAccount, attributes: string[]) {
+        this.name = name
+        this.owner = owner
+        this.formInput = []
+
+        for (const attribute of attributes) {
+            const name = buildID(account.identity!, attribute)
+            this.formInput.push(buildFormDefinitionInput(name, account.attributes![attribute]))
+        }
+
+        this.formInput.push(buildFormDefinitionInput('name', account.uuid))
+        this.formInput.push(buildFormDefinitionInput('account', account.identity))
+
+        const label = `${account.uuid} account edit`
+        const description =
+            'These changes will be processed by the next account aggregation after submission. Changes will be persisted until a new source account is manually assigned or account is unedited.'
+        const topSection = buildTopSection(label, description, attributes)
+        this.formElements = [topSection]
+        this.formConditions = buildEditFormConditions(attributes, account.identity!)
     }
 }

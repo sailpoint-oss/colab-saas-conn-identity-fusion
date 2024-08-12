@@ -81,13 +81,13 @@ export const connector = async () => {
 
             if ((await ctx.isMergingEnabled()) && !ctx.isFirstRun()) {
                 //PROCESS FORM INSTANCES
-                logger.info('Processing existing forms.')
-                const forms = await ctx.listForms()
+                logger.info('Processing existing unique forms.')
+                const forms = await ctx.listUniqueForms()
                 forms: for (const currentForm of forms) {
                     let cancelled = true
                     let finished = false
                     const accountID = getFormValue(currentForm, 'account')
-                    const instances = ctx.listFormInstancesByForm(currentForm)
+                    const instances = ctx.listUniqueFormInstancesByForm(currentForm)
                     formInstances: for (const currentFormInstance of instances) {
                         logger.debug(`Processing form instance ${currentForm.name} (${currentFormInstance.id}).`)
                         const formName = currentForm.name
@@ -96,10 +96,8 @@ export const connector = async () => {
                         switch (currentFormInstance.state) {
                             case 'COMPLETED':
                                 const { decision, account, message } =
-                                    await ctx.processFormInstance(currentFormInstance)
+                                    await ctx.processUniqueFormInstance(currentFormInstance)
                                 logger.debug(`Result: ${message}.`)
-
-                                currentFormInstance.formData
 
                                 const identityMatch = await ctx.getIdentityByUID(decision)
 
@@ -135,12 +133,12 @@ export const connector = async () => {
                                 }
 
                                 finished = true
-                                ctx.deleteFormInstance(currentFormInstance)
+                                ctx.deleteUniqueFormInstance(currentFormInstance)
                                 break formInstances
 
                             case 'CANCELLED':
                                 logger.debug(`${currentForm.name} (${currentFormInstance.id}) was cancelled.`)
-                                ctx.deleteFormInstance(currentFormInstance)
+                                ctx.deleteUniqueFormInstance(currentFormInstance)
 
                             default:
                                 cancelled = false
@@ -155,7 +153,7 @@ export const connector = async () => {
                     if (finished || cancelled) {
                         try {
                             logger.info(`Deleting form ${currentForm.name}.`)
-                            await ctx.deleteForm(currentForm)
+                            await ctx.deleteUniqueForm(currentForm)
                         } catch (e) {
                             const error = `Error deleting form with ID ${currentForm.name}`
                             ctx.handleError(error)
@@ -204,7 +202,6 @@ export const connector = async () => {
                     if (uniqueForm) {
                         logger.debug(`Creating merging form`)
                         const form = await ctx.createUniqueForm(uniqueForm)
-                        ctx.addForm(form)
                     }
                 } catch (e) {
                     ctx.handleError(e)
@@ -213,8 +210,8 @@ export const connector = async () => {
 
             if (await ctx.isMergingEnabled()) {
                 //PROCESS FORMS
-                const forms = await ctx.listForms()
-                logger.debug(`Checking form instances exist`)
+                const forms = await ctx.listUniqueForms()
+                logger.debug(`Checking unique form instances exist`)
                 for (const form of forms) {
                     const sourceName = getFormValue(form, 'source')
                     const reviewerIDs = ctx.listReviewerIDs(sourceName)
@@ -222,10 +219,10 @@ export const connector = async () => {
                     for (const reviewerID of reviewerIDs) {
                         if (ctx.isSourceReviewer(sourceName, reviewerID)) {
                             const reviewer = ctx.getIdentityById(reviewerID)!
-                            let currentFormInstance = ctx.getFormInstanceByReviewerID(form, reviewerID)
+                            let currentFormInstance = ctx.getUniqueFormInstanceByReviewerID(form, reviewerID)
 
                             if (!currentFormInstance) {
-                                currentFormInstance = await ctx.createFormInstance(form, reviewerID)
+                                currentFormInstance = await ctx.createUniqueFormInstance(form, reviewerID)
                                 logger.info(
                                     `Form URL for ${reviewer.attributes!.uid}: ${currentFormInstance.standAloneFormUrl}`
                                 )
@@ -247,7 +244,7 @@ export const connector = async () => {
                         const reviewer = ctx.getIdentityById(reviewerID)!
                         const reviewerAccount = ctx.getIdentityAccount(reviewer)!
                         reviewerAccount.attributes!.reviews = []
-                        for (const instance of ctx.listFormInstancesByReviewerID(reviewerID)) {
+                        for (const instance of ctx.listUniqueFormInstancesByReviewerID(reviewerID)) {
                             const form = ctx.getFormByID(instance.formDefinitionId!)
                             if (form) {
                                 const review = buildReviewFromFormInstance(instance)
@@ -255,6 +252,47 @@ export const connector = async () => {
                             }
                         }
                     } catch (error) {
+                        ctx.handleError(error)
+                    }
+                }
+            }
+
+            //PROCESS EDIT FORM INSTANCES
+            const forms = await ctx.listEditForms()
+            logger.info('Processing existing unique forms.')
+            forms: for (const currentForm of forms) {
+                let cancelled = true
+                let finished = false
+                const accountID = getFormValue(currentForm, 'account')
+                const account = (await ctx.getFusionAccount(accountID)) as Account
+                const instances = ctx.listUniqueFormInstancesByForm(currentForm)
+                formInstances: for (const currentFormInstance of instances) {
+                    logger.debug(`Processing form instance ${currentForm.name} (${currentFormInstance.id}).`)
+                    const formName = currentForm.name
+
+                    switch (currentFormInstance.state) {
+                        case 'COMPLETED':
+                            //TODO
+                            ctx.processEditFormInstanceEdits(currentFormInstance, account)
+
+                            finished = true
+                            break formInstances
+
+                        case 'CANCELLED':
+                            logger.debug(`${currentForm.name} (${currentFormInstance.id}) was cancelled.`)
+
+                        default:
+                            cancelled = false
+                            logger.debug(`No changes made yet for ${formName} instance.`)
+                    }
+                }
+
+                if (finished || cancelled) {
+                    try {
+                        logger.info(`Deleting form ${currentForm.name}.`)
+                        await ctx.deleteEditForm(currentForm)
+                    } catch (e) {
+                        const error = `Error deleting form with ID ${currentForm.name}`
                         ctx.handleError(error)
                     }
                 }
@@ -301,8 +339,8 @@ export const connector = async () => {
     }
 
     const stdAccountCreate: StdAccountCreateHandler = async (context, input, res) => {
-        opLog(config, input)
         const entitlementSelectionError = `Only action source reviewer and report entitlements can be requested on account creation`
+        opLog(config, input)
         let message: string
 
         if (input.attributes.statuses) {
@@ -330,14 +368,14 @@ export const connector = async () => {
             switch (action) {
                 case 'reset':
                     throw new ConnectorError(entitlementSelectionError, ConnectorErrorType.Generic)
-                    break
 
                 case 'edit':
                     throw new ConnectorError(entitlementSelectionError, ConnectorErrorType.Generic)
-                    break
+
+                case 'unedit':
+                    throw new ConnectorError(entitlementSelectionError, ConnectorErrorType.Generic)
 
                 case 'report':
-                    await ctx.init()
                     ctx.buildReport(uniqueAccount.nativeIdentity)
                     break
 
@@ -382,6 +420,34 @@ export const connector = async () => {
                                 break
 
                             case 'edit':
+                                const form = await ctx.createEditForm(account)
+                                const reviewerIDs = ctx.listReviewerIDs()
+
+                                for (const reviewerID of reviewerIDs) {
+                                    const reviewer = ctx.getIdentityById(reviewerID)!
+                                    let currentFormInstance = await ctx.getEditFormInstanceByReviewerID(
+                                        form,
+                                        reviewerID
+                                    )
+
+                                    if (!currentFormInstance) {
+                                        currentFormInstance = await ctx.createUniqueFormInstance(form, reviewerID)
+                                        logger.info(
+                                            `Form URL for ${reviewer.attributes!.uid}: ${currentFormInstance.standAloneFormUrl}`
+                                        )
+                                        // Send notifications
+                                        logger.info(`Sending email notifications for ${form.name}`)
+                                        const email = new ReviewEmail(reviewer, form.name!, currentFormInstance)
+                                        await ctx.sendEmail(email)
+                                    }
+                                }
+                                break
+
+                            case 'unedit':
+                                const fusionAccount = (await ctx.getFusionAccount(input.identity)) as Account
+                                fusionAccount.modified = new Date(0).toISOString()
+                                deleteArrayItem(fusionAccount.attributes!.statuses as string[], 'edit')
+                                account = (await ctx.refreshUniqueAccount(fusionAccount)) as UniqueAccount
                                 break
 
                             case 'report':
@@ -412,12 +478,14 @@ export const connector = async () => {
                                         }
                                         break
                                     case AttributeChangeOp.Set:
-                                        const now = new Date().toISOString().split('T')[0]
-                                        message = `[${now}] Account edited by attribute sync`
-                                        statuses.push('edited')
-                                        account.attributes[change.attribute] = change.value
-                                        const history = account.attributes!.history as string[]
-                                        history.push(message)
+                                        if (!statuses.includes('edited')) {
+                                            const now = new Date().toISOString().split('T')[0]
+                                            message = `[${now}] Account edited by attribute sync`
+                                            statuses.push('edited')
+                                            account.attributes[change.attribute] = change.value
+                                            const history = account.attributes!.history as string[]
+                                            history.push(message)
+                                        }
                                         break
 
                                     default:

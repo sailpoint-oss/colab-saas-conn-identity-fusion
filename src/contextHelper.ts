@@ -1,7 +1,6 @@
 import {
     Account,
     AttributeDefinition,
-    BaseAccount,
     FormDefinitionResponseBeta,
     FormInstanceResponseBeta,
     IdentityBeta,
@@ -26,11 +25,9 @@ import {
     attrSplit,
     buildAccountAttributesObject,
     buildIdentityAttributesObject,
-    combineArrays,
     composeErrorMessage,
     datedMessage,
     getExpirationDate,
-    getFormName,
     getInputFromDescription,
     getOwnerFromSource,
     lm,
@@ -41,8 +38,15 @@ import {
     stringifyIdentity,
     stringifyScore,
 } from './utils'
-import { IDENTITYNOTFOUNDRETRIES, IDENTITYNOTFOUNDWAIT, WORKFLOW_NAME, reservedAttributes } from './constants'
-import { UniqueForm } from './model/form'
+import {
+    EDIT_FORM_NAME,
+    IDENTITYNOTFOUNDRETRIES,
+    IDENTITYNOTFOUNDWAIT,
+    UNIQUE_FORM_NAME,
+    WORKFLOW_NAME,
+    reservedAttributes,
+} from './constants'
+import { buildID, EditForm, UniqueForm } from './model/form'
 import { buildUniqueID } from './utils/unique'
 import { ReviewEmail, ErrorEmail, ReportEmail } from './model/email'
 import { AccountAnalysis, SimilarAccountMatch, UniqueAccount } from './model/account'
@@ -69,8 +73,11 @@ export class ContextHelper {
     private currentIdentities: IdentityDocument[]
     private accounts: Account[]
     private authoritativeAccounts: Account[]
+    private uniqueForms: FormDefinitionResponseBeta[]
+    private uniqueFormInstances: FormInstanceResponseBeta[]
+    private editForms: FormDefinitionResponseBeta[]
+    private editFormInstances: FormInstanceResponseBeta[]
     private forms: FormDefinitionResponseBeta[]
-    private formInstances: FormInstanceResponseBeta[]
     private errors: string[]
     private uuids: string[]
     private baseUrl: string
@@ -86,8 +93,11 @@ export class ContextHelper {
         this.currentIdentities = []
         this.accounts = []
         this.authoritativeAccounts = []
+        this.uniqueForms = []
+        this.uniqueFormInstances = []
+        this.editForms = []
         this.forms = []
-        this.formInstances = []
+        this.editFormInstances = []
         this.errors = []
         this.reviewerIDs = new Map<string, string[]>()
 
@@ -130,8 +140,10 @@ export class ContextHelper {
             this.accounts = []
             this.authoritativeAccounts = []
             this.currentIdentities = []
-            this.forms = []
-            this.formInstances = []
+            this.uniqueForms = []
+            this.uniqueFormInstances = []
+            this.editForms = []
+            this.editFormInstances = []
             this.errors = []
             this.initiated = 'partial'
         }
@@ -145,8 +157,7 @@ export class ContextHelper {
             this.uuids = this.accounts.map((x) => x.attributes!.uuid).filter((x) => x !== undefined)
             this.authoritativeAccounts = await this.listAuthoritativeAccounts()
             this.currentIdentities = this.identities.filter((x) => identityIDs.includes(x.id))
-            this.forms = await this.listForms()
-            this.formInstances = await this.getFormInstances(this.forms)
+            await this.loadForms()
 
             if (this.config.uid_scope === 'source') {
                 logger.info('Compiling current IDs for source scope.')
@@ -172,8 +183,12 @@ export class ContextHelper {
         return this.sources
     }
 
-    listReviewerIDs(source: string): string[] {
-        return this.reviewerIDs.get(source) || []
+    listReviewerIDs(source?: string): string[] {
+        if (source) {
+            return this.reviewerIDs.get(source) || []
+        } else {
+            return Array.from(new Set(Array.from(this.reviewerIDs.values()).flat()))
+        }
     }
 
     listAllReviewerIDs(): string[] {
@@ -257,7 +272,12 @@ export class ContextHelper {
     }
 
     async getFusionAccount(id: string): Promise<Account | undefined> {
-        const account = this.accounts.find((x) => x.nativeIdentity === id)
+        let account
+        if (this.initiated === 'full') {
+            account = this.accounts.find((x) => x.nativeIdentity === id)
+        } else {
+            account = await this.client.getAccountBySourceAndNativeIdentity(this.getSource().id!, id)
+        }
 
         return account
     }
@@ -329,7 +349,7 @@ export class ContextHelper {
         }
     }
 
-    async refreshUniqueAccount(account: Account): Promise<UniqueAccount | undefined> {
+    async refreshUniqueAccount(account: Account): Promise<UniqueAccount> {
         const c = 'refreshUniqueAccount'
 
         let sourceAccounts: Account[] = []
@@ -348,8 +368,8 @@ export class ContextHelper {
 
         if (sourceAccounts.length === 0) sourceAccounts.push(account)
 
+        const schema = await this.getSchema()
         try {
-            const schema = await this.getSchema()
             const attributes = account.attributes
             if (needsRefresh) {
                 logger.debug(lm(`Refreshing ${account.attributes!.uniqueID} account`, c, 1))
@@ -437,7 +457,7 @@ export class ContextHelper {
                 } else {
                     logger.debug(lm(`Existing account. Enforcing defined correlation.`, c, 1))
                     let identity: IdentityDocument | IdentityBeta | undefined
-                    let accounts: Account[] | BaseAccount[]
+                    let accountIds: string[]
                     identity = this.identities.find((x) => x.id === account.identityId) as IdentityDocument
                     if (!identity) {
                         let count = 0
@@ -455,32 +475,40 @@ export class ContextHelper {
                                 wait = wait + IDENTITYNOTFOUNDWAIT
                             }
                         }
-                        accounts = await this.client.getAccountsByIdentity(identity!.id!)
+                        const accounts = await this.client.getAccountsByIdentity(identity!.id!)
+                        accountIds = accounts
+                            .filter((x) => this.config.sources.includes(x.sourceName!))
+                            .map((x) => x.id!)
                     } else {
-                        accounts = (identity as IdentityDocument).accounts!
+                        const accounts = (identity as IdentityDocument).accounts!
+                        accountIds = accounts
+                            .filter((x) => this.config.sources.includes(x.source!.name!))
+                            .map((x) => x.id!)
                     }
 
                     for (const acc of account.attributes!.accounts as string[]) {
                         const uid: string = (identity.attributes as any).uid
                         try {
-                            if (!accounts.find((x) => x.id === acc)) {
+                            if (!accountIds.includes(acc) && this.authoritativeAccounts.find((x) => x.id === acc)) {
                                 logger.debug(lm(`Correlating ${acc} account with ${uid}.`, c, 1))
                                 const response = await this.client.correlateAccount(identity.id as string, acc)
+                                accountIds.push(acc)
                             }
                         } catch (e) {
                             logger.error(lm(`Failed to correlate ${acc} account with ${uid}.`, c, 1))
                             account.attributes!.accounts = account.attributes!.accounts.filter((x: string) => x !== acc)
                         }
+                        account.attributes!.accounts = accountIds
                     }
                 }
             }
-
-            const uniqueAccount = new UniqueAccount(account, schema)
-
-            return uniqueAccount
         } catch (error) {
             logger.error(error as string)
         }
+
+        const uniqueAccount = new UniqueAccount(account, schema)
+
+        return uniqueAccount
     }
 
     async buildReport(id: string) {
@@ -539,29 +567,11 @@ export class ContextHelper {
 
         const c = 'buildUniqueAccountFromID'
         logger.debug(lm(`Fetching original account`, c, 1))
-        const account = await this.client.getAccountBySourceAndNativeIdentity(this.getSource().id!, id)
-        const sourceAccounts: Account[] = []
+        const account = await this.getFusionAccount(id)
+
         if (account) {
-            const identity = await this.client.getIdentity(account.identityId!)
-            const accounts = await this.client.getAccountsByIdentity(identity!.id!)
-            const correlatedAccounts = accounts
-                .filter((x) => this.config.sources.includes(x.sourceName!))
-                .map((x) => x.id as string)
-            account.attributes!.accounts = combineArrays(correlatedAccounts, account.attributes!.accounts)
-
-            for (const acc of account.attributes!.accounts) {
-                logger.debug(lm(`Looking for ${acc} account`, c, 1))
-                const response = await this.client.getAccount(acc)
-                if (response) {
-                    logger.debug(lm(`Found linked account ${response.name} (${response.sourceName})`, c, 1))
-                    sourceAccounts.push(response)
-                } else {
-                    logger.error(lm(`Unable to find account ID ${acc}`, c, 1))
-                }
-            }
-
             const uniqueAccount = await this.refreshUniqueAccount(account)
-            return uniqueAccount!
+            return uniqueAccount
         } else {
             throw new ConnectorError('Account not found', ConnectorErrorType.NotFound)
         }
@@ -575,20 +585,36 @@ export class ContextHelper {
         return uniqueID
     }
 
-    addForm(form: FormDefinitionResponseBeta) {
-        this.forms.push(form)
+    addUniqueForm(form: FormDefinitionResponseBeta) {
+        this.uniqueForms.push(form)
     }
 
-    getFormName(account?: Account): string {
-        return getFormName(this.getSource().name, account)
+    getUniqueFormName(account?: Account, sourceName?: string): string {
+        let name: string
+        if (account) {
+            name = `${UNIQUE_FORM_NAME} (${sourceName}) - ${account.name} (${account.id})`
+        } else {
+            name = `${UNIQUE_FORM_NAME}`
+        }
+        return name
     }
 
-    listFormInstancesByForm(form: FormDefinitionResponseBeta): FormInstanceResponseBeta[] {
-        return this.formInstances.filter((x) => x.formDefinitionId === form.id)
+    getEditFormName(accountName?: string): string {
+        let name: string
+        if (accountName) {
+            name = `${EDIT_FORM_NAME} for ${accountName}`
+        } else {
+            name = `${EDIT_FORM_NAME}`
+        }
+        return name
     }
 
-    listFormInstancesByReviewerID(reviewerID: string): FormInstanceResponseBeta[] {
-        const formInstances = this.formInstances.filter((x) => x.recipients!.find((y) => y.id === reviewerID))
+    listUniqueFormInstancesByForm(form: FormDefinitionResponseBeta): FormInstanceResponseBeta[] {
+        return this.uniqueFormInstances.filter((x) => x.formDefinitionId === form.id)
+    }
+
+    listUniqueFormInstancesByReviewerID(reviewerID: string): FormInstanceResponseBeta[] {
+        const formInstances = this.uniqueFormInstances.filter((x) => x.recipients!.find((y) => y.id === reviewerID))
         return formInstances ? formInstances : []
     }
 
@@ -596,55 +622,107 @@ export class ContextHelper {
         return this.forms.find((x) => x.id === id)
     }
 
-    getFormInstanceByReviewerID(
+    getUniqueFormInstanceByReviewerID(
         form: FormDefinitionResponseBeta,
         reviewerID: string
     ): FormInstanceResponseBeta | undefined {
-        return this.formInstances.find(
+        return this.uniqueFormInstances.find(
             (x) => x.formDefinitionId === form.id && x.recipients!.find((y) => y.id === reviewerID)
         )
     }
 
-    async listForms(): Promise<FormDefinitionResponseBeta[]> {
-        const forms = await this.client.listForms()
-        const currentForms = forms.filter((x) => x.name?.startsWith(this.getFormName()))
+    getEditFormInstanceByReviewerID(form: FormDefinitionResponseBeta, reviewerID: string) {
+        return this.editFormInstances.find(
+            (x) => x.formDefinitionId === form.id && x.recipients!.find((y) => y.id === reviewerID)
+        )
+    }
 
-        return currentForms
+    private async loadForms() {
+        this.forms = await this.client.listForms()
+        this.uniqueForms = this.forms.filter((x) => x.name?.startsWith(this.getUniqueFormName()))
+        this.editForms = this.forms.filter((x) => x.name?.startsWith(this.getEditFormName()))
+
+        let formInstances = await this.client.listFormInstances()
+
+        formInstances = formInstances.sort((a, b) => new Date(a.modified!).valueOf() - new Date(b.modified!).valueOf())
+        const uniqueFormIDs = this.uniqueForms.map((x) => x.id)
+        this.editFormInstances = formInstances.filter((x) => uniqueFormIDs.includes(x.formDefinitionId))
+        const editFormIDs = this.editForms.map((x) => x.id)
+        this.editFormInstances = formInstances.filter((x) => editFormIDs.includes(x.formDefinitionId))
+    }
+
+    async listUniqueForms(): Promise<FormDefinitionResponseBeta[]> {
+        return this.uniqueForms
+    }
+
+    async listEditForms(): Promise<FormDefinitionResponseBeta[]> {
+        return this.editForms
     }
 
     async createUniqueForm(form: UniqueForm): Promise<FormDefinitionResponseBeta> {
         const response = await this.client.createForm(form)
-        this.forms.push(response)
+        this.uniqueForms.push(response)
 
         return response
     }
 
-    async deleteForm(form: FormDefinitionResponseBeta) {
-        await this.client.deleteForm(form.id!)
+    async createEditForm(account: UniqueAccount): Promise<FormDefinitionResponseBeta> {
+        const name = this.getEditFormName(account.uuid)
+        const owner = this.source!.owner
+        const attributes = Object.keys(account.attributes).filter((x) => !reservedAttributes.includes(x))
+        const form = new EditForm(name, owner, account, attributes)
+        const response = await this.client.createForm(form)
 
-        const index = this.forms.findIndex((x) => x.id === form.id!)
-        deleteArrayItem(this.forms, index)
+        return response
     }
 
-    async getFormInstances(forms?: FormDefinitionResponseBeta[]): Promise<FormInstanceResponseBeta[]> {
-        let formInstances = await this.client.listFormInstances()
-        //Order from older to newer
-        formInstances = formInstances.sort((a, b) => new Date(a.modified!).valueOf() - new Date(b.modified!).valueOf())
+    async deleteUniqueForm(form: FormDefinitionResponseBeta) {
+        await this.client.deleteForm(form.id!)
 
-        if (forms) {
-            const formIDs = forms.map((x) => x.id)
-            const currentFormInstances = formInstances.filter((x) => formIDs.includes(x.formDefinitionId))
-            return currentFormInstances
-        } else {
-            return formInstances
+        const index = this.uniqueForms.findIndex((x) => x.id === form.id!)
+        this.uniqueForms.splice(index, 1)
+    }
+
+    async deleteEditForm(form: FormDefinitionResponseBeta) {
+        await this.client.deleteForm(form.id!)
+    }
+
+    // async listEditFormInstances(forms?: FormDefinitionResponseBeta[]): Promise<FormInstanceResponseBeta[]> {
+    //     let formInstances = await this.client.listFormInstances()
+    //     //Order from older to newer
+    //     formInstances = formInstances.sort((a, b) => new Date(a.modified!).valueOf() - new Date(b.modified!).valueOf())
+
+    //     if (forms) {
+    //         const formIDs = forms.map((x) => x.id)
+    //         const currentFormInstances = formInstances.filter((x) => formIDs.includes(x.formDefinitionId))
+    //         return currentFormInstances
+    //     } else {
+    //         return formInstances
+    //     }
+    // }
+
+    // async getUniqueFormInstances(forms?: FormDefinitionResponseBeta[]): Promise<FormInstanceResponseBeta[]> {
+    //     let formInstances = await this.client.listFormInstances()
+    //     //Order from older to newer
+    //     formInstances = formInstances.sort((a, b) => new Date(a.modified!).valueOf() - new Date(b.modified!).valueOf())
+
+    //     if (forms) {
+    //         const formIDs = forms.map((x) => x.id)
+    //         const currentFormInstances = formInstances.filter((x) => formIDs.includes(x.formDefinitionId))
+    //         return currentFormInstances
+    //     } else {
+    //         return formInstances
+    //     }
+    // }
+
+    async deleteUniqueFormInstance(formInstance: FormInstanceResponseBeta) {
+        const index = this.uniqueFormInstances.findIndex((x) => x.id === formInstance.id)
+        if (index) {
+            this.uniqueFormInstances.splice(index, 1)
         }
     }
 
-    async deleteFormInstance(formInstance: FormInstanceResponseBeta) {
-        deleteArrayItem(this.formInstances, formInstance)
-    }
-
-    async createFormInstance(form: FormDefinitionResponseBeta, reviewerID: string) {
+    async createUniqueFormInstance(form: FormDefinitionResponseBeta, reviewerID: string) {
         const expire = getExpirationDate(this.config)
         const formInput = form.formInput?.reduce(getInputFromDescription, {})
 
@@ -655,7 +733,7 @@ export class ContextHelper {
             this.source!.id!,
             expire
         )
-        this.formInstances.push(currentFormInstance)
+        this.uniqueFormInstances.push(currentFormInstance)
 
         return currentFormInstance
     }
@@ -800,7 +878,7 @@ export class ContextHelper {
 
                 if (similarMatches.length > 0) {
                     logger.debug(lm(`Similar matches found`, c, 1))
-                    const formName = getFormName(this.source!.name, uncorrelatedAccount)
+                    const formName = this.getUniqueFormName(uncorrelatedAccount, this.source!.name)
                     const formOwner = { id: this.source!.owner.id, type: this.source!.owner.type }
                     const accountAttributes = buildAccountAttributesObject(
                         uncorrelatedAccount,
@@ -942,10 +1020,10 @@ export class ContextHelper {
         return reviewers
     }
 
-    async processFormInstance(
+    async processUniqueFormInstance(
         formInstance: FormInstanceResponseBeta
     ): Promise<{ decision: string; account: string; message: string }> {
-        const c = 'processFormInstance'
+        const c = 'processUniqueFormInstance'
         const now = new Date().toISOString()
         let message = ''
         const decision = formInstance.formData!['identities'].toString()
@@ -1146,30 +1224,6 @@ export class ContextHelper {
         return schema
     }
 
-    // async checkAccountCreateProvisioningPolicy() {
-    //     let policy = await this.client.getProvisioningPolicy(this.source!.id!, UsageType.Create)
-    //     if (!policy) {
-    //         const policyDTO: ProvisioningPolicyDto = {
-    //             name: 'Account Create',
-    //             usageType: UsageType.Create,
-    //             fields: [
-    //                 {
-    //                     name: 'uniqueID',
-    //                     isRequired: true,
-    //                     type: 'string',
-    //                     transform: {
-    //                         type: 'identityAttribute',
-    //                         attributes: {
-    //                             name: 'uid',
-    //                         },
-    //                     },
-    //                 },
-    //             ],
-    //         }
-    //         policy = await this.client.createProvisioningPolicy(this.source!.id!, policyDTO)
-    //     }
-    // }
-
     processReviewFormInstanceEdits(formInstance: FormInstanceResponseBeta, account: Account): boolean {
         let edited = false
         for (const attribute of this.config.merging_attributes) {
@@ -1182,15 +1236,17 @@ export class ContextHelper {
         return edited
     }
 
+    processEditFormInstanceEdits(formInstance: FormInstanceResponseBeta, account: Account) {
+        for (const attribute of Object.keys(account.attributes!)) {
+            const id = buildID(account.identity, attribute)
+            if (formInstance.formData![id]) {
+                account.attributes![attribute] = formInstance.formData![id]
+            }
+        }
+    }
+
     buildStatusEntitlements(): Status[] {
         const statusEntitlements = statuses.map((x) => new Status(x))
-        // const sourceInput: StatusSource[] = this.sources.map(({ id, name }) => ({
-        //     id: id!,
-        //     name: `${name} source reviewer`,
-        //     description: `Designated reviewer for source ${name} potential duplicated identities`,
-        // }))
-        // const sourceEntitlements = sourceInput.map((x) => new Status(x))
-        // const entitlements = [...statusEntitlements, ...sourceEntitlements]
 
         return statusEntitlements
     }

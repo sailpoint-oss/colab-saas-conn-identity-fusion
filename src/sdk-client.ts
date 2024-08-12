@@ -418,7 +418,7 @@ export class SDKClient {
         const api = new CustomFormsBetaApi(this.config)
 
         const response = await api.createFormDefinition({
-            body: form,
+            createFormDefinitionRequestBeta: form,
         })
 
         return response.data

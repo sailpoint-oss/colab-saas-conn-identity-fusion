@@ -24,6 +24,29 @@ export class ReviewEmail implements TestWorkflowRequestBeta {
         }
     }
 }
+//TODO
+export class EditEmail implements TestWorkflowRequestBeta {
+    input: object
+    constructor(recipient: IdentityDocument, formName: string, instance: FormInstanceResponseBeta) {
+        const subject = formName
+        let body = ''
+        body += md.render(`Dear ${recipient.displayName},`)
+        body += md.render(
+            'The system has detected a potential match on one or more existing identities that needs your review. If this is not a match please select ‘This is a New Identity.'
+        )
+
+        body += md.render('Click [here](${instance.standAloneFormUrl!}) to review the identities.')
+
+        body += md.render('Thank you,')
+        body += md.render('IAM/Security Team')
+
+        this.input = {
+            recipients: [recipient.attributes!.email],
+            subject,
+            body,
+        }
+    }
+}
 
 export class ErrorEmail implements TestWorkflowRequestBeta {
     input: object

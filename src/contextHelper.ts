@@ -416,15 +416,17 @@ export class ContextHelper {
                                     switch (attributeMerge) {
                                         case 'first':
                                             if (firstSource) {
-                                                attributes![attrDef.name] = value
-                                                break values
+                                                if (value[0]) {
+                                                    attributes![attrDef.name] = value[0]
+                                                    break values
+                                                }
                                             }
                                             break
 
                                         case 'source':
                                             const source = attrConf?.source
-                                            if (sourceAccount.sourceName === source) {
-                                                attributes![attrDef.name] = value
+                                            if (sourceAccount.sourceName === source && value[0]) {
+                                                attributes![attrDef.name] = value[0]
                                                 break values
                                             }
                                             break
@@ -541,6 +543,7 @@ export class ContextHelper {
 
         uniqueAccount.attributes!.uniqueID = uniqueID
         uniqueAccount.attributes!.statuses = [status]
+        uniqueAccount.attributes!.actions = []
         uniqueAccount.attributes!.reviews = []
         uniqueAccount.attributes!.history = []
         uniqueAccount.modified = new Date(0).toISOString()
@@ -563,11 +566,16 @@ export class ContextHelper {
     }
 
     async buildUniqueAccountFromID(id: string): Promise<UniqueAccount> {
-        const schema = await this.getSchema()
-
         const c = 'buildUniqueAccountFromID'
+
+        const schema = await this.getSchema()
         logger.debug(lm(`Fetching original account`, c, 1))
         const account = await this.getFusionAccount(id)
+        if (account) {
+            account.attributes!.accounts = account.attributes!.accounts || []
+            account.attributes!.actions = account.attributes!.actions || []
+            account.attributes!.reviews = account.attributes!.reviews || []
+        }
 
         if (account) {
             const uniqueAccount = await this.refreshUniqueAccount(account)

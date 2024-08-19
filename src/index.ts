@@ -358,8 +358,10 @@ export const connector = async () => {
 
         const identity = (await ctx.getIdentityByUID(input.attributes.uniqueID)) as IdentityDocument
         const originAccount = (await ctx.getAccountByIdentity(identity)) as Account
-        message = datedMessage('Created from access request', originAccount)
+        originAccount.attributes = { ...originAccount.attributes, ...identity.attributes }
+        message = 'Created from access request'
         const uniqueAccount = await ctx.buildUniqueAccount(originAccount, 'manual', message)
+
         ctx.setUUID(uniqueAccount)
 
         const actions = [].concat(input.attributes.actions)

@@ -139,6 +139,7 @@ export const connector = async () => {
                             case 'CANCELLED':
                                 logger.debug(`${currentForm.name} (${currentFormInstance.id}) was cancelled.`)
                                 ctx.deleteUniqueFormInstance(currentFormInstance)
+                                break
 
                             default:
                                 cancelled = false
@@ -280,6 +281,7 @@ export const connector = async () => {
 
                         case 'CANCELLED':
                             logger.debug(`${currentForm.name} (${currentFormInstance.id}) was cancelled.`)
+                            break
 
                         default:
                             cancelled = false
@@ -341,7 +343,6 @@ export const connector = async () => {
     const stdAccountCreate: StdAccountCreateHandler = async (context, input, res) => {
         const entitlementSelectionError = `Only action source reviewer and report entitlements can be requested on account creation`
         opLog(config, input)
-        let message: string
 
         if (input.attributes.statuses) {
             throw new ConnectorError(entitlementSelectionError, ConnectorErrorType.Generic)
@@ -359,7 +360,7 @@ export const connector = async () => {
         const identity = (await ctx.getIdentityByUID(input.attributes.uniqueID)) as IdentityDocument
         const originAccount = (await ctx.getAccountByIdentity(identity)) as Account
         originAccount.attributes = { ...originAccount.attributes, ...identity.attributes }
-        message = 'Created from access request'
+        const message = 'Created from access request'
         const uniqueAccount = await ctx.buildUniqueAccount(originAccount, 'manual', message)
 
         ctx.setUUID(uniqueAccount)

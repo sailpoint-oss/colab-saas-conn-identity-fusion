@@ -11,6 +11,6 @@
         "forceConsistentCasingInFileNames": true,
         "types": ["node"]
     },
-    "include": ["src/**/*", "bak/authoritative.ts.bak", "bak/merging.ts.bak", "bak/orphan.ts.bak"],
+    "include": ["src/**/*"],
     "exclude": ["node_modules", "**/*.spec.ts", "**/*.spec.js"]
 }

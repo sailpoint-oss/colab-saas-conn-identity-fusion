@@ -303,7 +303,7 @@ export const connector = async () => {
             //BUILD RESULTING ACCOUNTS
             logger.info('Sending accounts.')
             for await (const account of ctx.listUniqueAccounts()) {
-                logger.info({ account })
+                logger.debug({ account })
                 res.send(account)
             }
 

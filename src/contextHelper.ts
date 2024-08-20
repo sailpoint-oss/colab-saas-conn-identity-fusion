@@ -353,11 +353,16 @@ export class ContextHelper {
         const c = 'refreshUniqueAccount'
 
         let sourceAccounts: Account[] = []
-        for (const sourceName of this.config.sources) {
-            const accounts = this.authoritativeAccounts.filter(
-                (x) => x.sourceName === sourceName && account.attributes!.accounts.includes(x.id)
-            )
-            sourceAccounts = sourceAccounts.concat(accounts)
+        if (this.initiated === 'full') {
+            for (const sourceName of this.config.sources) {
+                const accounts = this.authoritativeAccounts.filter(
+                    (x) => x.sourceName === sourceName && account.attributes!.accounts.includes(x.id)
+                )
+                sourceAccounts = sourceAccounts.concat(accounts)
+            }
+        } else {
+            const accounts = await this.client.getAccountsByIdentity(account.identityId!)
+            sourceAccounts = accounts.filter((x) => this.config.sources.includes(x.sourceName))
         }
 
         const lastConfigChange = new Date(this.source!.modified!).getTime()
@@ -389,24 +394,23 @@ export class ContextHelper {
                                 accountAttributes: for (const accountAttr of attrConf.account) {
                                     if (!sourceAccount.attributes) {
                                         const message = `Account ${sourceAccount.nativeIdentity} has no attributes`
-                                        logger.warn(sourceAccount)
+                                        logger.warn(message)
                                         continue
                                     }
                                     value = sourceAccount.attributes![accountAttr]
-                                    if (
-                                        value &&
-                                        (['multi', 'concatenate'].includes(attributeMerge) || values.length === 0)
-                                    ) {
+                                    if (value) {
                                         values.push(value)
+                                        if (['first', 'source'].includes(attributeMerge)) break accountAttributes
                                     }
                                 }
                             } else {
                                 value = sourceAccount.attributes![attrDef.name]
-                                values.push(value)
+                                if (value) values.push(value)
                             }
 
                             if (values.length > 0) {
-                                values = values.map((x) => attrSplit(x).flat())
+                                values = values.map((x) => attrSplit(x))
+
                                 let lst: string[]
                                 // let previousList: string[] = []
                                 if (['multi', 'concatenate'].includes(attributeMerge)) {
@@ -416,25 +420,31 @@ export class ContextHelper {
                                     switch (attributeMerge) {
                                         case 'first':
                                             if (firstSource) {
-                                                if (value[0]) {
+                                                if (value.length === 1) {
                                                     attributes![attrDef.name] = value[0]
-                                                    break values
+                                                } else {
+                                                    attributes![attrDef.name] = value
                                                 }
+                                                firstSource = false
+                                                break accounts
                                             }
                                             break
 
                                         case 'source':
                                             const source = attrConf?.source
-                                            if (sourceAccount.sourceName === source && value[0]) {
-                                                attributes![attrDef.name] = value[0]
-                                                break values
+                                            if (sourceAccount.sourceName === source) {
+                                                if (value.length === 1) {
+                                                    attributes![attrDef.name] = value[0]
+                                                } else {
+                                                    attributes![attrDef.name] = value
+                                                }
+                                                break accounts
                                             }
                                             break
                                         default:
                                             break
                                     }
                                 }
-                                firstSource = false
                             }
                         }
                         switch (attributeMerge) {
@@ -571,13 +581,12 @@ export class ContextHelper {
         const schema = await this.getSchema()
         logger.debug(lm(`Fetching original account`, c, 1))
         const account = await this.getFusionAccount(id)
+
         if (account) {
             account.attributes!.accounts = account.attributes!.accounts || []
             account.attributes!.actions = account.attributes!.actions || []
             account.attributes!.reviews = account.attributes!.reviews || []
-        }
-
-        if (account) {
+            account.modified = new Date(0).toISOString()
             const uniqueAccount = await this.refreshUniqueAccount(account)
             return uniqueAccount
         } else {

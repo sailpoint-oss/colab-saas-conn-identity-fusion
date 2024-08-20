@@ -776,9 +776,8 @@ export class ContextHelper {
             // const scores: number[] = []
             const scores = new Map<string, number>()
             attributes: for (const attribute of Object.keys(accountAttributes)) {
-                let cValue, iValue
-                iValue = accountAttributes[attribute] as string
-                cValue = candidate.attributes![attribute] as string
+                const iValue = accountAttributes[attribute] as string
+                const cValue = candidate.attributes![attribute] as string
                 if (iValue && cValue) {
                     const similarity = lig3(iValue, cValue)
                     const score = similarity * 100
@@ -984,7 +983,6 @@ export class ContextHelper {
 
     private async buildReviewersMap(): Promise<Map<string, string[]>> {
         const reviewersMap = new Map<string, string[]>()
-        const sourceIDs = this.sources.map((x) => x.id)
 
         const allReviewers = this.accounts.filter((x) => x.attributes!.statuses.includes('reviewer'))
         for (const source of this.sources) {
@@ -1032,7 +1030,6 @@ export class ContextHelper {
         formInstance: FormInstanceResponseBeta
     ): Promise<{ decision: string; account: string; message: string }> {
         const c = 'processUniqueFormInstance'
-        const now = new Date().toISOString()
         let message = ''
         const decision = formInstance.formData!['identities'].toString()
         const account = (formInstance.formInput!['account'] as any).value
@@ -1046,7 +1043,6 @@ export class ContextHelper {
         if (decision === 'This is a new identity') {
             message = `New identity approved by ${reviewerName}`
         } else {
-            const source = (formInstance.formInput!.source as any).value
             message = `Assignment approved by ${reviewerName}`
         }
 
@@ -1087,7 +1083,7 @@ export class ContextHelper {
         }
 
         logger.debug(lm('Compiling attributes.', c, 1))
-        let combinedAttributes: Map<string, AttributeDefinition> = new Map()
+        const combinedAttributes: Map<string, AttributeDefinition> = new Map()
         for (const schema of schemas.reverse()) {
             schema.attributes?.forEach((x) => combinedAttributes.set(x.name!, x))
         }
@@ -1275,7 +1271,7 @@ export class ContextHelper {
     handleError(error: any) {
         let message = error
         if (error instanceof Error) {
-            let message = error.message
+            message = error.message
             if (error instanceof AxiosError) {
                 const details = error.response!.data.messages.find((x: { locale: string }) => x.locale === 'en-US')
                 if (details) {

@@ -14,7 +14,7 @@ export class UniqueAccount implements StdAccountListOutput {
         this.attributes.IIQDisabled = this.disabled
 
         const accountsCount = account.attributes!.accounts.length
-        let statuses = this.attributes.statuses as string[]
+        const statuses = this.attributes.statuses as string[]
         if (accountsCount === 0 && !statuses.includes('reviewer')) {
             this.attributes.statuses = combineArrays(statuses, ['orphan'])
         } else if (statuses.includes('orphan')) {

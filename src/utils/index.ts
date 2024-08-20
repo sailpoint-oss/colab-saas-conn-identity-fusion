@@ -10,8 +10,7 @@ import {
 } from 'sailpoint-api-client'
 import { Context, logger } from '@sailpoint/connector-sdk'
 import { Config } from '../model/config'
-import { UNIQUE_FORM_NAME, MSDAY, PADDING } from '../constants'
-import { AxiosError } from 'axios'
+import { MSDAY, PADDING } from '../constants'
 
 import MarkdownIt from 'markdown-it'
 
@@ -135,21 +134,21 @@ export const opLog = (config: any, input: any) => {
     logger.debug({ config })
 }
 
-export const handleError = (error: any, errors: string[]) => {
-    let message = error
-    if (error instanceof Error) {
-        let message = error.message
-        if (error instanceof AxiosError) {
-            const details = error.response!.data.messages.find((x: { locale: string }) => x.locale === 'en-US')
-            if (details) {
-                message = message + '\n' + details.text
-            }
-        }
-    }
-    logger.error(message)
-    logger.error(error)
-    errors.push(message)
-}
+// export const handleError = (error: any, errors: string[]) => {
+//     let message = error
+//     if (error instanceof Error) {
+//         let message = error.message
+//         if (error instanceof AxiosError) {
+//             const details = error.response!.data.messages.find((x: { locale: string }) => x.locale === 'en-US')
+//             if (details) {
+//                 message = message + '\n' + details.text
+//             }
+//         }
+//     }
+//     logger.error(message)
+//     logger.error(error)
+//     errors.push(message)
+// }
 
 //================ SOURCES ================
 export const getOwnerFromSource = (source: Source): OwnerDto => {
@@ -292,7 +291,12 @@ export const composeErrorMessage = (context: Context, input: any, errors: string
 //================ FORMS ================
 
 export const getFormValue = (form: FormDefinitionResponseBeta, input: string): string => {
-    return form.formInput?.find((x) => x.id === input)?.description!
+    let value = ''
+    if (form.formInput) {
+        const i = form.formInput.find((x) => x.id === input) as any
+        if (i && i.description) value = i.description
+    }
+    return value
 }
 
 export const buildReviewFromFormInstance = (instance: FormInstanceResponseBeta): string => {

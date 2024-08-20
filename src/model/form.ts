@@ -327,7 +327,7 @@ const buildUniqueFormConditions = (
     }
 
     for (const target of targets) {
-        const { identity, score } = target
+        const { identity } = target
         formConditions.push({
             ruleOperator: 'AND',
             rules: [
@@ -389,7 +389,7 @@ export class UniqueForm implements CreateFormDefinitionRequestBeta {
         // }
 
         for (const attribute of attributes) {
-            for (const { identity, score } of targets) {
+            for (const { identity } of targets) {
                 const name = buildID(identity, attribute)
                 this.formInput.push(buildFormDefinitionInput(name, identity.attributes![attribute]))
             }

@@ -12,7 +12,7 @@ export class ReviewEmail implements TestWorkflowRequestBeta {
             'The system has detected a potential match on one or more existing identities that needs your review. If this is not a match please select ‘This is a New Identity.'
         )
 
-        body += md.render('Click [here](${instance.standAloneFormUrl!}) to review the identities.')
+        body += md.render(`Click [here](${instance.standAloneFormUrl!}) to review the identities.`)
 
         body += md.render('Thank you,')
         body += md.render('IAM/Security Team')
@@ -35,7 +35,7 @@ export class EditEmail implements TestWorkflowRequestBeta {
             'The system has detected a potential match on one or more existing identities that needs your review. If this is not a match please select ‘This is a New Identity.'
         )
 
-        body += md.render('Click [here](${instance.standAloneFormUrl!}) to review the identities.')
+        body += md.render(`Click [here](${instance.standAloneFormUrl!}) to review the identities.`)
 
         body += md.render('Thank you,')
         body += md.render('IAM/Security Team')

@@ -11,8 +11,10 @@ export default [
   {
     rules: {
       'no-unused-labels': 'off',
-      'no-unused-vars': 'warn',
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': 'warn',
       'no-explicit-any': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
       'no-case-declarations': 'off',
     }
   }

@@ -26,7 +26,6 @@ import {
     EntitlementsBetaApi,
     EntitlementBeta,
     IdentityBeta,
-    IdentitiesBetaApiListIdentitiesRequest,
     IdentitiesBetaApi,
     WorkgroupDtoBeta,
     GovernanceGroupsBetaApi,
@@ -167,10 +166,7 @@ export class SDKClient {
     async listAccountsBySource(id: string): Promise<Account[]> {
         const api = new AccountsApi(this.config)
         const filters = `sourceId eq "${id}"`
-        const search = async (
-            requestParameters?: AccountsApiListAccountsRequest | undefined,
-            axiosOptions?: AxiosRequestConfig<any> | undefined
-        ) => {
+        const search = async (requestParameters?: AccountsApiListAccountsRequest | undefined) => {
             return await api.listAccounts({ ...requestParameters, filters })
         }
 
@@ -182,12 +178,6 @@ export class SDKClient {
     async getAccountBySourceAndNativeIdentity(id: string, nativeIdentity: string): Promise<Account | undefined> {
         const api = new AccountsApi(this.config)
         const filters = `sourceId eq "${id}" and nativeIdentity eq "${nativeIdentity}"`
-        const search = async (
-            requestParameters?: AccountsApiListAccountsRequest | undefined,
-            axiosOptions?: AxiosRequestConfig<any> | undefined
-        ) => {
-            return await api.listAccounts({ ...requestParameters, filters })
-        }
 
         const response = await api.listAccounts({ filters })
 
@@ -201,10 +191,7 @@ export class SDKClient {
             const sourceValues = sourceIds.map((x) => `"${x}"`).join(', ')
             filters += ` and sourceId in (${sourceValues})`
         }
-        const search = async (
-            requestParameters?: AccountsApiListAccountsRequest | undefined,
-            axiosOptions?: AxiosRequestConfig<any> | undefined
-        ) => {
+        const search = async (requestParameters?: AccountsApiListAccountsRequest | undefined) => {
             return await api.listAccounts({ ...requestParameters, filters })
         }
 
@@ -220,10 +207,7 @@ export class SDKClient {
             const sourceValues = sourceIds.map((x) => `"${x}"`).join(', ')
             filters += ` and sourceId in (${sourceValues})`
         }
-        const search = async (
-            requestParameters?: AccountsApiListAccountsRequest | undefined,
-            axiosOptions?: AxiosRequestConfig<any> | undefined
-        ) => {
+        const search = async (requestParameters?: AccountsApiListAccountsRequest | undefined) => {
             return await api.listAccounts({ ...requestParameters, filters })
         }
 
@@ -239,10 +223,7 @@ export class SDKClient {
             const sourceValues = sourceIds.map((x) => `"${x}"`).join(', ')
             filters = `sourceId in (${sourceValues})`
         }
-        const search = async (
-            requestParameters?: AccountsApiListAccountsRequest | undefined,
-            axiosOptions?: AxiosRequestConfig<any> | undefined
-        ) => {
+        const search = async (requestParameters?: AccountsApiListAccountsRequest | undefined) => {
             return await api.listAccounts({ ...requestParameters, filters })
         }
 
@@ -512,10 +493,7 @@ export class SDKClient {
 
         const filters = `source.id eq "${id}"`
 
-        const search = async (
-            requestParameters?: AccountsApiListAccountsRequest | undefined,
-            axiosOptions?: AxiosRequestConfig<any> | undefined
-        ) => {
+        const search = async (requestParameters?: AccountsApiListAccountsRequest | undefined) => {
             return await api.listEntitlements({ ...requestParameters, filters })
         }
 

@@ -32,10 +32,6 @@ export class UniqueAccount implements StdAccountListOutput {
             this.identity = account.attributes!.uuid
             this.uuid = account.attributes!.uuid
         }
-        // if (status.includes('reviewer')) {
-        //     this.uuid = account.name
-        //     this.attributes.uuid = account.name
-        // }
     }
 }
 

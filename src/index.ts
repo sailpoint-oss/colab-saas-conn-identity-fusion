@@ -17,7 +17,7 @@ import {
     readConfig,
 } from '@sailpoint/connector-sdk'
 import { Account, IdentityDocument } from 'sailpoint-api-client'
-import { ReportEmail, ReviewEmail } from './model/email'
+import { ReviewEmail } from './model/email'
 import { buildReviewFromFormInstance, datedMessage, getFormValue, opLog, deleteArrayItem } from './utils'
 
 import { ContextHelper } from './contextHelper'
@@ -34,7 +34,7 @@ export const connector = async () => {
     //TODO improve
     const stdTest: StdTestConnectionHandler = async (context, input, res) => {
         opLog(config, input)
-        await ctx.init(true)
+        await ctx.init(undefined, true)
         const source = ctx.getSource()
         const sources = ctx.listSources()
 
@@ -64,10 +64,7 @@ export const connector = async () => {
 
             //Compiling info
             logger.info('Loading data.')
-            if (input.schema) {
-                ctx.loadSchema(input.schema)
-            }
-            await ctx.init()
+            await ctx.init(input.schema)
             const processedAccountIDs = ctx.listProcessedAccountIDs()
             let pendingAccounts: Account[]
             const authoritativeAccounts = await ctx.listAuthoritativeAccounts()
@@ -303,6 +300,7 @@ export const connector = async () => {
             //BUILD RESULTING ACCOUNTS
             logger.info('Sending accounts.')
             for await (const account of ctx.listUniqueAccounts()) {
+                // console.log(`${new Date().toISOString()} ${account.attributes.uniqueID}`)
                 logger.debug({ account })
                 res.send(account)
             }
@@ -320,10 +318,7 @@ export const connector = async () => {
 
         if (config.reset) return
 
-        await ctx.init(true)
-        if (input.schema) {
-            ctx.loadSchema(input.schema)
-        }
+        await ctx.init(input.schema, true)
         //Keepalive
         const interval = setInterval(() => {
             res.keepAlive()
@@ -352,10 +347,7 @@ export const connector = async () => {
 
         if (config.reset) return
 
-        await ctx.init()
-        if (input.schema) {
-            ctx.loadSchema(input.schema)
-        }
+        await ctx.init(input.schema)
 
         const identity = (await ctx.getIdentityByUID(input.attributes.uniqueID)) as IdentityDocument
         const originAccount = (await ctx.getAccountByIdentity(identity)) as Account
@@ -406,10 +398,8 @@ export const connector = async () => {
 
         if (config.reset) return
 
-        await ctx.init(true)
-        if (input.schema) {
-            ctx.loadSchema(input.schema)
-        }
+        await ctx.init(input.schema, true)
+
         let account = await ctx.buildUniqueAccountFromID(input.identity)
         let message: string
 
@@ -523,10 +513,7 @@ export const connector = async () => {
 
         if (config.reset) return
 
-        await ctx.init(true)
-        if (input.schema) {
-            ctx.loadSchema(input.schema)
-        }
+        await ctx.init(input.schema, true)
 
         //Keepalive
         const interval = setInterval(() => {
@@ -555,10 +542,7 @@ export const connector = async () => {
 
         if (config.reset) return
 
-        await ctx.init(true)
-        if (input.schema) {
-            ctx.loadSchema(input.schema)
-        }
+        await ctx.init(input.schema, true)
 
         //Keepalive
         const interval = setInterval(() => {
@@ -589,7 +573,7 @@ export const connector = async () => {
             // await ctx.checkAccountCreateProvisioningPolicy()
 
             let entitlements: StdEntitlementListOutput[]
-            await ctx.init(true)
+            await ctx.init(undefined, true)
             const sources = ctx.listSources()
             switch (input.type) {
                 case 'status':
@@ -622,7 +606,7 @@ export const connector = async () => {
         opLog(config, input)
         logger.info('Building dynamic schema.')
 
-        await ctx.init(true)
+        await ctx.init(undefined, true)
         const schema = await ctx.getSchema()
 
         logger.info({ schema })

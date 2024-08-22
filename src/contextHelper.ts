@@ -3,7 +3,6 @@ import {
     AttributeDefinition,
     FormDefinitionResponseBeta,
     FormInstanceResponseBeta,
-    IdentityBeta,
     IdentityDocument,
     OwnerDto,
     Schema,
@@ -33,19 +32,10 @@ import {
     lm,
     normalizeAccountAttributes,
     deleteArrayItem,
-    sleep,
-    updateAccountLinks,
     stringifyIdentity,
     stringifyScore,
 } from './utils'
-import {
-    EDIT_FORM_NAME,
-    IDENTITYNOTFOUNDRETRIES,
-    IDENTITYNOTFOUNDWAIT,
-    UNIQUE_FORM_NAME,
-    WORKFLOW_NAME,
-    reservedAttributes,
-} from './constants'
+import { EDIT_FORM_NAME, UNIQUE_FORM_NAME, WORKFLOW_NAME, reservedAttributes } from './constants'
 import { buildID, EditForm, UniqueForm } from './model/form'
 import { buildUniqueID } from './utils/unique'
 import { ReviewEmail, ErrorEmail, ReportEmail } from './model/email'
@@ -120,10 +110,13 @@ export class ContextHelper {
         this.baseUrl = new URL(this.config.baseurl.replace('.api.', '.')).origin
     }
 
-    async init(skipData?: boolean) {
+    async init(schema?: AccountSchema, skipData?: boolean) {
         if (!this.initiated) {
             logger.debug(lm(`Looking for connector instance`, this.c))
-            const id = this.config?.spConnectorInstanceId as string
+            if (schema) {
+                this.loadSchema(schema)
+            }
+            const id = this.config!.spConnectorInstanceId as string
             const allSources = await this.client.listSources()
             this.source = allSources.find((x) => (x.connectorAttributes as any).spConnectorInstanceId === id)
             this.sources = allSources.filter((x) => this.config?.sources.includes(x.name))
@@ -155,7 +148,7 @@ export class ContextHelper {
             this.mergingEnabled = this.config.merging_isEnabled && this.listAllReviewerIDs().length > 0
             const identityIDs = this.accounts.map((x) => x.identityId)
             this.uuids = this.accounts.map((x) => x.attributes!.uuid).filter((x) => x !== undefined)
-            this.authoritativeAccounts = await this.listAuthoritativeAccounts()
+            this.authoritativeAccounts = await this.fetchAuthoritativeAccounts()
             this.currentIdentities = this.identities.filter((x) => identityIDs.includes(x.id))
             await this.loadForms()
 
@@ -238,25 +231,17 @@ export class ContextHelper {
         let accounts = await this.client.listAccountsBySource(source.id!)
         accounts = accounts || []
 
-        logger.debug(lm('Updating existing account links.', c))
         for (const account of accounts) {
-            // updateAccountLinks(account, this.identities, config.sources)
             account.attributes!.accounts = account.attributes!.accounts || []
             account.attributes!.statuses = account.attributes!.statuses || []
             account.attributes!.actions = account.attributes!.actions || []
             account.attributes!.reviews = account.attributes!.reviews || []
             account.attributes!.history = account.attributes!.history || []
         }
-        // if (this.config?.deleteEmpty) {
-        //     accounts = accounts.filter(
-        //         (x) =>
-        //             !(
-        //                 x.uncorrelated === false &&
-        //                 x.attributes.accounts.length === 0 &&
-        //                 !x.attributes.status.includes('reviewer')
-        //             )
-        //     )
-        // }
+
+        if (this.config.deleteEmpty) {
+            accounts = accounts.filter((x) => !x.attributes!.statuses.includes('orphan'))
+        }
 
         return accounts
     }
@@ -303,7 +288,11 @@ export class ContextHelper {
     }
 
     async listAuthoritativeAccounts(): Promise<Account[]> {
-        const c = 'listAuthoritativeAccounts'
+        return this.authoritativeAccounts
+    }
+
+    private async fetchAuthoritativeAccounts(): Promise<Account[]> {
+        const c = 'fetchAuthoritativeAccounts'
 
         logger.info(lm('Fetching authoritative accounts.', c))
         const authoritativeAccounts = await this.client.listAccounts(this.sources.map((x) => x.id!))
@@ -323,25 +312,9 @@ export class ContextHelper {
 
     async *listUniqueAccounts(): AsyncGenerator<UniqueAccount> {
         const c = 'listUniqueAccounts'
-        const accounts: UniqueAccount[] = []
-        const uuids: string[] = []
-
-        if (this.config.deleteEmpty) {
-            this.accounts = this.accounts.filter(
-                (x) =>
-                    !(
-                        x.uncorrelated === false &&
-                        x.attributes!.accounts.length === 0 &&
-                        !x.attributes!.statuses.includes('reviewer')
-                    )
-            )
-        }
 
         logger.debug(lm('Updating accounts.', c))
         for (const account of this.accounts) {
-            updateAccountLinks(account, this.identities, this.config.sources)
-            this.setUUID(account)
-
             const uniqueAccount = await this.refreshUniqueAccount(account)
             if (uniqueAccount) {
                 yield uniqueAccount
@@ -349,29 +322,60 @@ export class ContextHelper {
         }
     }
 
+    private async getAccountIdentity(account: Account): Promise<IdentityDocument | undefined> {
+        let identity: IdentityDocument | undefined
+        if (this.initiated === 'full') {
+            identity = this.identities.find((x) => x.id === account.identityId)
+        } else {
+            identity = await this.client.getIdentityBySearch(account.identityId!)
+        }
+
+        return identity
+    }
+
+    private async listSourceAccounts(account: Account): Promise<Account[]> {
+        let sourceAccounts: Account[] = []
+
+        if (account.uncorrelated) {
+            sourceAccounts.push(account)
+        } else {
+            if (this.initiated === 'full') {
+                for (const sourceName of this.config.sources) {
+                    const accounts = this.authoritativeAccounts.filter(
+                        (x) => x.sourceName === sourceName && account.attributes!.accounts.includes(x.id)
+                    )
+                    sourceAccounts = sourceAccounts.concat(accounts)
+                }
+            } else {
+                const accounts = await this.client.getAccountsByIdentity(account.identityId!)
+                sourceAccounts = accounts.filter((x) => this.config.sources.includes(x.sourceName))
+            }
+        }
+
+        return sourceAccounts
+    }
+
     async refreshUniqueAccount(account: Account): Promise<UniqueAccount> {
         const c = 'refreshUniqueAccount'
 
-        let sourceAccounts: Account[] = []
-        if (this.initiated === 'full') {
-            for (const sourceName of this.config.sources) {
-                const accounts = this.authoritativeAccounts.filter(
-                    (x) => x.sourceName === sourceName && account.attributes!.accounts.includes(x.id)
-                )
-                sourceAccounts = sourceAccounts.concat(accounts)
-            }
+        const sourceAccounts = await this.listSourceAccounts(account)
+        let needsRefresh = false
+
+        if (account.uncorrelated) {
+            needsRefresh = true
+            this.setUUID(account)
         } else {
-            const accounts = await this.client.getAccountsByIdentity(account.identityId!)
-            sourceAccounts = accounts.filter((x) => this.config.sources.includes(x.sourceName))
+            if (!account.attributes!.statuses.includes('edited')) {
+                const lastConfigChange = new Date(this.source!.modified!).getTime()
+                const lastModified = new Date(account.modified!).getTime()
+                if (lastModified < lastConfigChange) {
+                    needsRefresh = true
+                } else {
+                    const newSourceData = sourceAccounts.find((x) => new Date(x.modified!).getTime() > lastModified)
+                    needsRefresh = newSourceData ? true : false
+                }
+            }
         }
-
-        const lastConfigChange = new Date(this.source!.modified!).getTime()
-        const lastModified = new Date(account.modified!).getTime()
-        const newSourceData = sourceAccounts.find((x) => new Date(x.modified!).getTime() > lastModified) ? true : false
-        const needsRefresh =
-            (newSourceData || lastModified < lastConfigChange) && !account.attributes!.statuses.includes('edited')
-
-        if (sourceAccounts.length === 0) sourceAccounts.push(account)
 
         const schema = await this.getSchema()
         try {
@@ -381,7 +385,6 @@ export class ContextHelper {
 
                 attributes: for (const attrDef of schema.attributes) {
                     if (!reservedAttributes.includes(attrDef.name)) {
-                        delete attributes![attrDef.name]
                         const attrConf = this.config.merging_map.find((x) => x.identity === attrDef.name)
                         const attributeMerge = attrConf?.attributeMerge || this.config.attributeMerge
                         let multiValue: string[] = []
@@ -411,8 +414,6 @@ export class ContextHelper {
                             if (values.length > 0) {
                                 values = values.map((x) => attrSplit(x))
 
-                                let lst: string[]
-                                // let previousList: string[] = []
                                 if (['multi', 'concatenate'].includes(attributeMerge)) {
                                     multiValue = multiValue.concat(values).flat()
                                 }
@@ -447,6 +448,7 @@ export class ContextHelper {
                                 }
                             }
                         }
+
                         switch (attributeMerge) {
                             case 'multi':
                                 attributes![attrDef.name] = [...new Set(multiValue)].sort()
@@ -463,59 +465,57 @@ export class ContextHelper {
                 }
 
                 attributes!.statuses = Array.from(new Set(attributes!.statuses))
-
-                if (account.uncorrelated) {
-                    logger.debug(lm(`New account. Needs to be enabled.`, c, 2))
-                } else {
-                    logger.debug(lm(`Existing account. Enforcing defined correlation.`, c, 1))
-                    let identity: IdentityDocument | IdentityBeta | undefined
-                    let accountIds: string[]
-                    identity = this.identities.find((x) => x.id === account.identityId) as IdentityDocument
-                    if (!identity) {
-                        let count = 0
-                        let wait = IDENTITYNOTFOUNDWAIT
-                        while (!identity) {
-                            identity = await this.client.getIdentity(account.identityId!)
-                            if (!identity) {
-                                if (++count > IDENTITYNOTFOUNDRETRIES)
-                                    throw new Error(
-                                        `Identity ${account.identityId} for account ${account.nativeIdentity} not found`
-                                    )
-
-                                logger.warn(lm(`Identity ID ${account.identityId} not found. Re-trying...`, c, 1))
-                                await sleep(wait)
-                                wait = wait + IDENTITYNOTFOUNDWAIT
-                            }
-                        }
-                        const accounts = await this.client.getAccountsByIdentity(identity!.id!)
-                        accountIds = accounts
-                            .filter((x) => this.config.sources.includes(x.sourceName!))
-                            .map((x) => x.id!)
-                    } else {
-                        const accounts = (identity as IdentityDocument).accounts!
-                        accountIds = accounts
-                            .filter((x) => this.config.sources.includes(x.source!.name!))
-                            .map((x) => x.id!)
-                    }
-
-                    for (const acc of account.attributes!.accounts as string[]) {
-                        const uid: string = (identity.attributes as any).uid
-                        try {
-                            if (!accountIds.includes(acc) && this.authoritativeAccounts.find((x) => x.id === acc)) {
-                                logger.debug(lm(`Correlating ${acc} account with ${uid}.`, c, 1))
-                                const response = await this.client.correlateAccount(identity.id as string, acc)
-                                accountIds.push(acc)
-                            }
-                        } catch (e) {
-                            logger.error(lm(`Failed to correlate ${acc} account with ${uid}.`, c, 1))
-                            account.attributes!.accounts = account.attributes!.accounts.filter((x: string) => x !== acc)
-                        }
-                        account.attributes!.accounts = accountIds
-                    }
-                }
             }
         } catch (error) {
             logger.error(error as string)
+        }
+
+        if (account.uncorrelated) {
+            logger.debug(lm(`New account. Needs to be enabled.`, c, 2))
+        } else {
+            logger.debug(lm(`Existing account. Enforcing defined correlation.`, c, 1))
+            // if (!identity) {
+            //     let count = 0
+            //     let wait = IDENTITYNOTFOUNDWAIT
+            //     while (!identity) {
+            //         identity = await this.client.getIdentityBySearch(account.identityId!)
+            //         if (!identity) {
+            //             if (++count > IDENTITYNOTFOUNDRETRIES)
+            //                 throw new Error(
+            //                     `Identity ${account.identityId} for account ${account.nativeIdentity} not found`
+            //                 )
+
+            //             logger.warn(lm(`Identity ID ${account.identityId} not found. Re-trying...`, c, 1))
+            //             await sleep(wait)
+            //             wait = wait + IDENTITYNOTFOUNDWAIT
+            //         }
+            //     }
+            // }
+            const identity = await this.getAccountIdentity(account)
+
+            if (identity) {
+                const accounts = identity.accounts!
+                const accountIds = accounts
+                    .filter((x) => this.config.sources.includes(x.source!.name!))
+                    .map((x) => x.id!)
+
+                for (const acc of account.attributes!.accounts as string[]) {
+                    const uid: string = (identity.attributes as any).uid
+                    try {
+                        if (
+                            !accountIds.includes(acc) &&
+                            (this.initiated === 'partial' || this.authoritativeAccounts.find((x) => x.id === acc))
+                        ) {
+                            logger.debug(lm(`Correlating ${acc} account with ${uid}.`, c, 1))
+                            const response = await this.client.correlateAccount(identity.id as string, acc)
+                            accountIds.push(acc)
+                        }
+                    } catch (e) {
+                        logger.error(lm(`Failed to correlate ${acc} account with ${uid}.`, c, 1))
+                    }
+                    account.attributes!.accounts = accountIds
+                }
+            }
         }
 
         const uniqueAccount = new UniqueAccount(account, schema)
@@ -539,13 +539,12 @@ export class ContextHelper {
         logger.debug(lm(`Processing ${account.name} (${account.id})`, c, 1))
         let uniqueID: string
 
-        const uniqueAccount: Account = { ...account }
+        const uniqueAccount = account
 
+        uniqueAccount.attributes!.accounts = [account.id]
         if (status !== 'reviewer') {
             uniqueID = await buildUniqueID(account, this.ids, this.config)
-            uniqueAccount.attributes!.accounts = [account.id]
         } else {
-            uniqueAccount.attributes!.accounts = []
             logger.debug(lm(`Taking identity uid as unique ID`, c, 1))
             const identity = this.identities.find((x) => x.id === account.identityId) as IdentityDocument
             uniqueID = identity?.attributes!.uid
@@ -578,7 +577,6 @@ export class ContextHelper {
     async buildUniqueAccountFromID(id: string): Promise<UniqueAccount> {
         const c = 'buildUniqueAccountFromID'
 
-        const schema = await this.getSchema()
         logger.debug(lm(`Fetching original account`, c, 1))
         const account = await this.getFusionAccount(id)
 
@@ -888,10 +886,6 @@ export class ContextHelper {
                 deleteArrayItem(attributes.statuses, 'edited')
                 // Check if similar match exists
             } else {
-                logger.debug(
-                    lm(`Checking similar matches for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id})`, c, 1)
-                )
-
                 if (similarMatches.length > 0) {
                     logger.debug(lm(`Similar matches found`, c, 1))
                     const formName = this.getUniqueFormName(uncorrelatedAccount, this.source!.name)
@@ -985,8 +979,6 @@ export class ContextHelper {
     }
 
     isSourceReviewer(sourceName: string, identityID: string): boolean {
-        // const sourceID = this.sources.find((x) => x.name === sourceName)!.id!
-
         return this.reviewerIDs.get(sourceName)!.includes(identityID)
     }
 
@@ -998,42 +990,41 @@ export class ContextHelper {
             const sourceID = source.id!
             const reviewers = allReviewers.filter((x) => x.attributes!.actions.includes(sourceID))
             const reviewerIDs = reviewers.map((x) => x.identityId!)
-            // reviewersMap.set(sourceID, reviewerIDs)
             reviewersMap.set(source.name, reviewerIDs)
         }
 
         return reviewersMap
     }
 
-    private async fetchReviewerIDs(source: Source): Promise<string[]> {
-        const c = 'fetchReviewerIDs'
-        logger.debug(lm(`Fetching reviewers for ${source.name}`, c, 1))
-        let reviewers: string[] = []
+    // private async fetchReviewerIDs(source: Source): Promise<string[]> {
+    //     const c = 'fetchReviewerIDs'
+    //     logger.debug(lm(`Fetching reviewers for ${source.name}`, c, 1))
+    //     let reviewers: string[] = []
 
-        if (source.managementWorkgroup) {
-            logger.debug(lm(`Reviewer is ${source.managementWorkgroup.name} workgroup`, c, 1))
-            const workgroups = await this.client.listWorkgroups()
-            const workgroup = workgroups.find((x) => x.id === source.managementWorkgroup!.id)
-            if (workgroup) {
-                logger.debug(lm('Workgroup found', c, 1))
-                const members = await this.client.listWorkgroupMembers(workgroup.id!)
-                reviewers = members.map((x) => x.id!)
-            }
-        } else if (source.owner || reviewers.length === 0) {
-            logger.debug(lm('Reviewer is the owner', c, 1))
-            const reviewerIdentity = await this.client.getIdentity(source.owner.id!)
-            if (reviewerIdentity) {
-                logger.debug(lm('Reviewer found', c, 1))
-                reviewers.push(reviewerIdentity.id!)
-            } else {
-                logger.error(lm(`Reviewer not found ${source.owner.name}`, c, 1))
-            }
-        } else {
-            logger.warn(lm(`No reviewer provided. Merging forms will not be processed.`, c, 1))
-        }
+    //     if (source.managementWorkgroup) {
+    //         logger.debug(lm(`Reviewer is ${source.managementWorkgroup.name} workgroup`, c, 1))
+    //         const workgroups = await this.client.listWorkgroups()
+    //         const workgroup = workgroups.find((x) => x.id === source.managementWorkgroup!.id)
+    //         if (workgroup) {
+    //             logger.debug(lm('Workgroup found', c, 1))
+    //             const members = await this.client.listWorkgroupMembers(workgroup.id!)
+    //             reviewers = members.map((x) => x.id!)
+    //         }
+    //     } else if (source.owner || reviewers.length === 0) {
+    //         logger.debug(lm('Reviewer is the owner', c, 1))
+    //         const reviewerIdentity = await this.client.getIdentity(source.owner.id!)
+    //         if (reviewerIdentity) {
+    //             logger.debug(lm('Reviewer found', c, 1))
+    //             reviewers.push(reviewerIdentity.id!)
+    //         } else {
+    //             logger.error(lm(`Reviewer not found ${source.owner.name}`, c, 1))
+    //         }
+    //     } else {
+    //         logger.warn(lm(`No reviewer provided. Merging forms will not be processed.`, c, 1))
+    //     }
 
-        return reviewers
-    }
+    //     return reviewers
+    // }
 
     async processUniqueFormInstance(
         formInstance: FormInstanceResponseBeta

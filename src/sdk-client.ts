@@ -30,9 +30,6 @@ import {
     WorkgroupDtoBeta,
     GovernanceGroupsBetaApi,
     ListWorkgroupMembers200ResponseInnerBeta,
-} from 'sailpoint-api-client'
-import { AxiosRequestConfig } from 'axios'
-import {
     AccountsApi,
     AccountsApiGetAccountRequest,
     AccountsApiListAccountsRequest,
@@ -45,7 +42,7 @@ import {
     Transform,
     TransformsApi,
     UsageType,
-} from 'sailpoint-api-client/dist/v3'
+} from 'sailpoint-api-client'
 import { URL } from 'url'
 import { logger } from '@sailpoint/connector-sdk'
 
@@ -114,6 +111,24 @@ export class SDKClient {
         } else {
             return undefined
         }
+    }
+
+    async listIdentitiesByEntitlements(entitlements: string[]): Promise<IdentityDocument[]> {
+        const api = new SearchApi(this.config)
+
+        const query = entitlements.map((x) => `@access(value.exact:"${x}")`).join(' OR ')
+
+        const search: Search = {
+            indices: ['identities'],
+            query: {
+                query,
+            },
+            includeNested: true,
+        }
+
+        const response = await api.searchPost({ search })
+
+        return response.data as IdentityDocument[]
     }
 
     async listIdentitiesBySource(id: string): Promise<IdentityDocument[]> {

@@ -14,7 +14,7 @@ import { UniqueAccount } from './account'
 
 export const buildID = (entity: any, attribute: string): string => {
     let name
-    if (typeof entity === 'string') {
+    if (typeof entity === 'string' || typeof entity === 'number') {
         name = entity
     } else {
         name = entity.id
@@ -83,8 +83,30 @@ const buildFormDefinitionSelectElement = (key: string, label: any, options: Opti
     return element
 }
 
-const buildTopSection = (label: string, description: string, attributes?: string[]): FormElementBeta => {
+const buildEditTopSection = (label: string, description: string, attributes?: string[]): FormElementBeta => {
     let formElements: any[] = []
+    let count = 0
+    if (attributes) {
+        formElements = attributes.map((x) => buildFormDefinitionTextElement(buildID(++count, x), x))
+    }
+    return {
+        id: 'topSection',
+        key: 'topSection',
+        elementType: 'SECTION',
+        config: {
+            alignment: 'CENTER' as any,
+            description: description as any,
+            label: label as any,
+            labelStyle: 'h2' as any,
+            showLabel: true as any,
+            formElements,
+        },
+    }
+}
+
+const buildUniqueTopSection = (label: string, description: string, attributes?: string[]): FormElementBeta => {
+    let formElements: any[] = []
+    let count = 0
     if (attributes) {
         formElements = attributes.map((x) => buildFormDefinitionTextElement(x, x))
     }
@@ -418,7 +440,7 @@ export class UniqueForm implements CreateFormDefinitionRequestBeta {
         const label = `Potential Identity Merge from source ${account.sourceName}`
         const description =
             'Potentially duplicated identity was found. Please review the list of possible matches from existing identities and select the right one.'
-        const topSection = buildTopSection(label, description, attributes)
+        const topSection = buildUniqueTopSection(label, description, attributes)
         const identitiesSection = buildIdentitiesSection(options)
         this.formElements = [topSection, identitiesSection]
         for (const { identity, score } of targets) {
@@ -432,13 +454,15 @@ export class UniqueForm implements CreateFormDefinitionRequestBeta {
 const buildEditFormConditions = (attributes: string[], id: string): FormConditionBeta[] => {
     const formConditions: FormConditionBeta[] = []
 
+    let count = 0
     for (const attribute of attributes) {
+        const element = buildID(++count, attribute)
         formConditions.push({
             ruleOperator: 'AND',
             rules: [
                 {
                     sourceType: 'INPUT',
-                    source: buildID(id, attribute),
+                    source: element,
                     operator: 'NOT_EM',
                     valueType: 'STRING',
                     value: null as any,
@@ -448,14 +472,8 @@ const buildEditFormConditions = (attributes: string[], id: string): FormConditio
                 {
                     effectType: 'SET_DEFAULT_VALUE',
                     config: {
-                        defaultValueLabel: buildID(id, attribute) as any,
-                        element: attribute as any,
-                    },
-                },
-                {
-                    effectType: 'ENABLE',
-                    config: {
-                        element: attribute as any,
+                        defaultValueLabel: element as any,
+                        element: element as any,
                     },
                 },
             ],
@@ -476,20 +494,23 @@ export class EditForm implements CreateFormDefinitionRequestBeta {
         this.name = name
         this.owner = owner
         this.formInput = []
+        const accountName = account.attributes.uniqueID as string
 
-        for (const attribute of attributes) {
-            const name = buildID(account.identity!, attribute)
-            this.formInput.push(buildFormDefinitionInput(name, account.attributes![attribute]))
+        let count = 0
+        const fields = attributes.sort()
+        for (const field of fields) {
+            const name = buildID(++count, field)
+            this.formInput.push(buildFormDefinitionInput(name, account.attributes![field]))
         }
 
-        this.formInput.push(buildFormDefinitionInput('name', account.uuid))
-        this.formInput.push(buildFormDefinitionInput('account', account.identity))
+        this.formInput.push(buildFormDefinitionInput('account.name', accountName))
+        this.formInput.push(buildFormDefinitionInput('account.id', account.identity))
 
-        const label = `${account.uuid} account edit`
+        const label = `${accountName} account edit`
         const description =
             'These changes will be processed by the next account aggregation after submission. Changes will be persisted until a new source account is manually assigned or account is unedited.'
-        const topSection = buildTopSection(label, description, attributes)
+        const topSection = buildEditTopSection(label, description, fields)
         this.formElements = [topSection]
-        this.formConditions = buildEditFormConditions(attributes, account.identity!)
+        this.formConditions = buildEditFormConditions(fields, account.identity!)
     }
 }

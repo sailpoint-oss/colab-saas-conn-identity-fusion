@@ -17,7 +17,7 @@ import {
     readConfig,
 } from '@sailpoint/connector-sdk'
 import { Account, IdentityDocument } from 'sailpoint-api-client'
-import { ReviewEmail } from './model/email'
+import { EditEmail, ReviewEmail } from './model/email'
 import { buildReviewFromFormInstance, datedMessage, getFormValue, opLog, deleteArrayItem } from './utils'
 
 import { ContextHelper } from './contextHelper'
@@ -123,12 +123,6 @@ export const connector = async () => {
                                     }
                                 }
 
-                                if (uniqueAccount) {
-                                    if (ctx.processReviewFormInstanceEdits(currentFormInstance, uniqueAccount)) {
-                                        uniqueAccount.attributes!.statuses.push('edited')
-                                    }
-                                }
-
                                 finished = true
                                 ctx.deleteUniqueFormInstance(currentFormInstance)
                                 break formInstances
@@ -144,10 +138,8 @@ export const connector = async () => {
                         }
                     }
 
-                    const index = pendingAccounts.findIndex((x) => x.id === accountID)
-                    if (index > -1) {
-                        deleteArrayItem(pendingAccounts, index)
-                    }
+                    pendingAccounts = pendingAccounts.filter((x) => x.id !== accountID)
+
                     if (finished || cancelled) {
                         try {
                             logger.info(`Deleting form ${currentForm.name}.`)
@@ -212,11 +204,11 @@ export const connector = async () => {
                 logger.debug(`Checking unique form instances exist`)
                 for (const form of forms) {
                     const sourceName = getFormValue(form, 'source')
-                    const reviewerIDs = ctx.listReviewerIDs(sourceName)
+                    const reviewerIDs = await ctx.listReviewerIDs(sourceName)
 
                     for (const reviewerID of reviewerIDs) {
                         if (ctx.isSourceReviewer(sourceName, reviewerID)) {
-                            const reviewer = ctx.getIdentityById(reviewerID)!
+                            const reviewer = (await ctx.getIdentityById(reviewerID)) as IdentityDocument
                             let currentFormInstance = ctx.getUniqueFormInstanceByReviewerID(form, reviewerID)
 
                             if (!currentFormInstance) {
@@ -239,7 +231,7 @@ export const connector = async () => {
 
                 for (const reviewerID of reviewerIDs) {
                     try {
-                        const reviewer = ctx.getIdentityById(reviewerID)!
+                        const reviewer = (await ctx.getIdentityById(reviewerID)) as IdentityDocument
                         const reviewerAccount = ctx.getIdentityAccount(reviewer)!
                         reviewerAccount.attributes!.reviews = []
                         for (const instance of ctx.listUniqueFormInstancesByReviewerID(reviewerID)) {
@@ -257,13 +249,13 @@ export const connector = async () => {
 
             //PROCESS EDIT FORM INSTANCES
             const forms = await ctx.listEditForms()
-            logger.info('Processing existing unique forms.')
+            logger.info('Processing existing edit forms.')
             forms: for (const currentForm of forms) {
                 let cancelled = true
                 let finished = false
-                const accountID = getFormValue(currentForm, 'account')
+                const accountID = getFormValue(currentForm, 'account.id')
                 const account = (await ctx.getFusionAccount(accountID)) as Account
-                const instances = ctx.listUniqueFormInstancesByForm(currentForm)
+                const instances = ctx.listEditFormInstancesByForm(currentForm)
                 formInstances: for (const currentFormInstance of instances) {
                     logger.debug(`Processing form instance ${currentForm.name} (${currentFormInstance.id}).`)
                     const formName = currentForm.name
@@ -272,6 +264,10 @@ export const connector = async () => {
                         case 'COMPLETED':
                             //TODO
                             ctx.processEditFormInstanceEdits(currentFormInstance, account)
+                            const reviewer = await ctx.getIdentityById(currentFormInstance.recipients![0].id!)
+                            account.attributes!.statuses.push('edited')
+                            const message = datedMessage(`Edited by ${reviewer?.displayName}`)
+                            account.attributes!.history.push(message)
 
                             finished = true
                             break formInstances
@@ -410,27 +406,30 @@ export const connector = async () => {
                         switch (change.value) {
                             case 'reset':
                                 await ctx.resetUniqueID(account)
+                                message = datedMessage('UniqueID reset')
+                                const history = account.attributes!.history as string[]
+                                history.push(message)
                                 break
 
                             case 'edit':
                                 const form = await ctx.createEditForm(account)
-                                const reviewerIDs = ctx.listReviewerIDs()
+                                const reviewerIDs = await ctx.listReviewerIDs()
 
                                 for (const reviewerID of reviewerIDs) {
-                                    const reviewer = ctx.getIdentityById(reviewerID)!
+                                    const reviewer = (await ctx.getIdentityById(reviewerID)) as IdentityDocument
                                     let currentFormInstance = await ctx.getEditFormInstanceByReviewerID(
                                         form,
                                         reviewerID
                                     )
 
                                     if (!currentFormInstance) {
-                                        currentFormInstance = await ctx.createUniqueFormInstance(form, reviewerID)
+                                        currentFormInstance = await ctx.createEditFormInstance(form, reviewerID)
                                         logger.info(
                                             `Form URL for ${reviewer.attributes!.uid}: ${currentFormInstance.standAloneFormUrl}`
                                         )
                                         // Send notifications
                                         logger.info(`Sending email notifications for ${form.name}`)
-                                        const email = new ReviewEmail(reviewer, form.name!, currentFormInstance)
+                                        const email = new EditEmail(reviewer, form.name!, currentFormInstance)
                                         await ctx.sendEmail(email)
                                     }
                                 }

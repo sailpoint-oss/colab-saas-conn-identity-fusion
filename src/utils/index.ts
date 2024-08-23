@@ -29,7 +29,9 @@ export const capitalizeFirstLetter = (str: string) => {
 }
 
 export const deleteArrayItem = (array: any[], item: string | number) => {
-    array.splice(array.indexOf(item, 1))
+    if (array.includes(item)) {
+        array.splice(array.indexOf(item, 1), 1)
+    }
 }
 
 export const keepAlive = async (promise: Promise<any>) => {
@@ -90,10 +92,17 @@ export const getExpirationDate = (config: Config): string => {
     return new Date(new Date().valueOf() + MSDAY * config.merging_expirationDays).toISOString()
 }
 
-export const datedMessage = (message: string, account: Account): string => {
+export const datedMessage = (message: string, account?: Account): string => {
     const now = new Date().toISOString().split('T')[0]
+    let result = ''
 
-    return `[${now}] ${message} [${account.name} (${account.sourceName})]`
+    if (account) {
+        result = `[${now}] ${message} [${account.name} (${account.sourceName})]`
+    } else {
+        result = `[${now}] ${message}`
+    }
+
+    return result
 }
 
 export const countKeys = (objects: { [key: string]: string }[]): Map<string, number> => {
@@ -128,10 +137,8 @@ export const combineArrays = (a: any[] | undefined, b: any[] | undefined) => {
 }
 
 export const opLog = (config: any, input: any) => {
-    logger.info('Input:')
-    logger.info({ input })
-    logger.debug('Config:')
-    logger.debug({ config })
+    logger.info({ log: '--Input--', input })
+    logger.info({ log: '--Config--', config })
 }
 
 // export const handleError = (error: any, errors: string[]) => {

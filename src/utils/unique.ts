@@ -5,7 +5,12 @@ import { buildAccountAttributesObject, lm } from '.'
 import { transliterate } from 'transliteration'
 import { Config } from '../model/config'
 
-export const buildUniqueID = async (account: Account, currentIDs: string[], config: Config): Promise<string> => {
+export const buildUniqueID = async (
+    account: Account,
+    currentIDs: string[],
+    config: Config,
+    buildContext: boolean
+): Promise<string> => {
     const c = 'buildUniqueID'
 
     let template = velocityjs.parse(config.uid_template)
@@ -19,8 +24,13 @@ export const buildUniqueID = async (account: Account, currentIDs: string[], conf
     let id = ''
     while (!found) {
         logger.debug(lm('Building context', c, 2))
-        let context = buildAccountAttributesObject(account, config.merging_map)
-        context = { ...account.attributes, ...context }
+        let context
+        if (buildContext) {
+            const attributes = buildAccountAttributesObject(account, config.merging_map)
+            context = { ...account.attributes, ...attributes }
+        } else {
+            context = { ...account.attributes }
+        }
         if (counter > 0) {
             const c = '0'.repeat(Math.max(0, config.uid_digits - counter.toString().length)) + counter
             context.counter = c

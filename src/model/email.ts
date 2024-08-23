@@ -9,7 +9,7 @@ export class ReviewEmail implements TestWorkflowRequestBeta {
         let body = ''
         body += md.render(`Dear ${recipient.displayName},`)
         body += md.render(
-            'The system has detected a potential match on one or more existing identities that needs your review. If this is not a match please select ‘This is a New Identity.'
+            'The system has detected a potential match on one or more existing identities that needs your review. If this is not a match please select "This is a New Identity".'
         )
 
         body += md.render(`Click [here](${instance.standAloneFormUrl!}) to review the identities.`)
@@ -29,7 +29,7 @@ export class EditEmail implements TestWorkflowRequestBeta {
     input: object
     constructor(recipient: IdentityDocument, formName: string, instance: FormInstanceResponseBeta) {
         const subject = formName
-        const name = instance.formInput!.name
+        const name = (instance.formInput!['account.name'] as any).value as string
         let body = ''
         body += md.render(`Dear ${recipient.displayName},`)
         body += md.render(

@@ -1,6 +1,6 @@
 import { AccountSchema, Attributes, StdAccountListOutput } from '@sailpoint/connector-sdk'
 import { Account, IdentityDocument } from 'sailpoint-api-client'
-import { combineArrays, deleteArrayItem } from '../utils'
+import { combineArrays, datedMessage, deleteArrayItem } from '../utils'
 
 export class UniqueAccount implements StdAccountListOutput {
     identity: string
@@ -15,7 +15,10 @@ export class UniqueAccount implements StdAccountListOutput {
 
         const accountsCount = account.attributes!.accounts.length
         const statuses = this.attributes.statuses as string[]
-        if (accountsCount === 0 && !statuses.includes('reviewer')) {
+        if (accountsCount === 0 && !statuses.includes('reviewer') && !statuses.includes('orphan')) {
+            const message = datedMessage('No authoritative accounts left')
+            const history = this.attributes.history as string[]
+            history.push(message)
             this.attributes.statuses = combineArrays(statuses, ['orphan'])
         } else if (statuses.includes('orphan')) {
             deleteArrayItem(statuses, 'orphan')

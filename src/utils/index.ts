@@ -137,8 +137,8 @@ export const combineArrays = (a: any[] | undefined, b: any[] | undefined) => {
 }
 
 export const opLog = (config: any, input: any) => {
-    logger.info({ log: '--Input--', input })
-    logger.info({ log: '--Config--', config })
+    logger.info({ '--Input--': input })
+    logger.info({ '--Config--': config })
 }
 
 // export const handleError = (error: any, errors: string[]) => {

@@ -339,21 +339,9 @@ export const connector = async () => {
             throw new ConnectorError(entitlementSelectionError, ConnectorErrorType.Generic)
         }
 
-        logger.info(`Creating ${input.attributes.uniqueID} account.`)
-
-        if (config.reset) return
-
-        await ctx.init(input.schema)
-
-        const identity = (await ctx.getIdentityByUID(input.attributes.uniqueID)) as IdentityDocument
-        const originAccount = (await ctx.getAccountByIdentity(identity)) as Account
-        originAccount.attributes = { ...originAccount.attributes, ...identity.attributes }
-        const message = 'Created from access request'
-        const uniqueAccount = await ctx.buildUniqueAccount(originAccount, 'manual', message)
-
-        ctx.setUUID(uniqueAccount)
-
         const actions = [].concat(input.attributes.actions)
+        let uniqueAccount: Account | undefined
+        let originAccount: Account | undefined
 
         for (const action of actions) {
             switch (action) {
@@ -367,10 +355,22 @@ export const connector = async () => {
                     throw new ConnectorError(entitlementSelectionError, ConnectorErrorType.Generic)
 
                 case 'report':
-                    ctx.buildReport(uniqueAccount.nativeIdentity)
-                    break
+                    throw new ConnectorError(entitlementSelectionError, ConnectorErrorType.Generic)
 
                 default:
+                    if (!uniqueAccount) {
+                        logger.info(`Creating ${input.attributes.uniqueID} account.`)
+
+                        await ctx.init(input.schema)
+
+                        const identity = (await ctx.getIdentityByUID(input.attributes.uniqueID)) as IdentityDocument
+                        originAccount = (await ctx.getAccountByIdentity(identity)) as Account
+                        originAccount.attributes = { ...originAccount.attributes, ...identity.attributes }
+                        const message = 'Created from access request'
+                        uniqueAccount = await ctx.buildUniqueAccount(originAccount, 'reviewer', message)
+
+                        ctx.setUUID(uniqueAccount)
+                    }
                     const sourceName = ctx.getSourceNameByID(action)
                     const message = datedMessage(`Reviewer assigned for ${sourceName} source`, originAccount)
                     uniqueAccount.attributes!.actions.push(action)
@@ -381,7 +381,7 @@ export const connector = async () => {
             }
         }
 
-        const account = (await ctx.refreshUniqueAccount(uniqueAccount)) as UniqueAccount
+        const account = (await ctx.refreshUniqueAccount(uniqueAccount!)) as UniqueAccount
 
         logger.info({ account })
         res.send(account)

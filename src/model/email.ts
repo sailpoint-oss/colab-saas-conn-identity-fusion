@@ -74,7 +74,7 @@ export class ReportEmail implements TestWorkflowRequestBeta {
         for (const analysis of analyses) {
             const attributeValues = attributes.map((x) => analysis.account.attributes![x])
             const { nativeIdentity, name, sourceName } = analysis.account
-            const result = analysis.results.map((x) => `- ${x}`).join('\n')
+            const result = analysis.results.map((x) => `- ${x}`).join('<br/>')
             const record = '| ' + [nativeIdentity, name, sourceName, ...attributeValues, result].join(' | ') + ' |\n'
             body += record
         }

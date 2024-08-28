@@ -424,6 +424,12 @@ export class ContextHelper {
                         !accountIds.every((item) => originalAccountIds.includes(item))
                     ) {
                         sourceAccountsChanged = true
+                        const isEdited = account.attributes!.statuses.includes('edited')
+                        if (isEdited) {
+                            deleteArrayItem(account.attributes!.statuses, 'edited')
+                            const message = datedMessage(`Automatically unedited by change in contributing accounts`)
+                            account.attributes!.history.push(message)
+                        }
                     }
                 }
             }
@@ -436,7 +442,7 @@ export class ContextHelper {
             if (sourceAccountsChanged) {
                 needsRefresh = true
             } else {
-                if (!account.attributes!.statuses.includes('edited')) {
+                if (!account.attributes!.statuses.some((x: string) => ['edited', 'orphan'].includes(x))) {
                     const lastConfigChange = new Date(this.source!.modified!).getTime()
                     const lastModified = new Date(account.modified!).getTime()
                     if (lastModified < lastConfigChange) {

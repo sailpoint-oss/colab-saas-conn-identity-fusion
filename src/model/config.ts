@@ -48,5 +48,6 @@ export interface Config {
     uid_template: string
     version: number
     reset: boolean
+    forceAggregation: boolean
     getScore: (attribute?: string) => number
 }

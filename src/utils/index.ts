@@ -13,6 +13,7 @@ import { Config } from '../model/config'
 import { MSDAY, PADDING } from '../constants'
 
 import MarkdownIt from 'markdown-it'
+import os from 'os'
 
 export const md = MarkdownIt({
     breaks: true,
@@ -20,6 +21,10 @@ export const md = MarkdownIt({
 })
 
 //================ MISC ================
+export const envInfo = () => {
+    logger.info({ '--CPU--': os.cpus() })
+}
+
 export const sleep = (ms: number) => {
     return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -140,22 +145,6 @@ export const opLog = (config: any, input: any) => {
     logger.info({ '--Input--': input })
     logger.info({ '--Config--': config })
 }
-
-// export const handleError = (error: any, errors: string[]) => {
-//     let message = error
-//     if (error instanceof Error) {
-//         let message = error.message
-//         if (error instanceof AxiosError) {
-//             const details = error.response!.data.messages.find((x: { locale: string }) => x.locale === 'en-US')
-//             if (details) {
-//                 message = message + '\n' + details.text
-//             }
-//         }
-//     }
-//     logger.error(message)
-//     logger.error(error)
-//     errors.push(message)
-// }
 
 //================ SOURCES ================
 export const getOwnerFromSource = (source: Source): OwnerDto => {

@@ -91,6 +91,12 @@
                             "label": "Reset accounts?",
                             "type": "checkbox",
                             "required": false
+                        },
+                        {
+                            "key": "forceAggregation",
+                            "label": "Force source aggregation?",
+                            "type": "checkbox",
+                            "required": false
                         }
                     ]
                 },

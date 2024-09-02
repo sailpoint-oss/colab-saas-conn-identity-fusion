@@ -112,7 +112,7 @@ export class ContextHelper {
         this.baseUrl = new URL(this.config.baseurl.replace('.api.', '.')).origin
     }
 
-    async init(schema?: AccountSchema, skipData?: boolean) {
+    async init(schema?: AccountSchema, lazy?: boolean) {
         if (!this.initiated) {
             logger.debug(lm(`Looking for connector instance`, this.c))
             if (schema) {
@@ -140,10 +140,10 @@ export class ContextHelper {
             this.editForms = []
             this.editFormInstances = []
             this.errors = []
-            this.initiated = 'partial'
+            this.initiated = 'lazy'
         }
 
-        if (!skipData && this.initiated === 'partial') {
+        if (!lazy && this.initiated === 'lazy') {
             this.identities = await this.listIdentities()
             this.accounts = await this.listAccounts()
             this.reviewerIDs = await this.buildReviewersMap()
@@ -345,6 +345,26 @@ export class ContextHelper {
         return identity
     }
 
+    async checkSelectedSourcesAggregation() {
+        if (this.config.forceAggregation) {
+            const latestFusionAggregation = await this.client.getLatestAccountAggregation(this.source!.id!)
+            if (latestFusionAggregation) {
+                const aggregations = []
+                const latestFusionAggregationDate = new Date(latestFusionAggregation.created!)
+                for (const source of this.sources) {
+                    const latestAggregation = await this.client.getLatestAccountAggregation(source.id!)
+                    const latestAggregationDate = new Date(latestAggregation ? latestAggregation.created! : 0)
+                    if (latestFusionAggregationDate > latestAggregationDate) {
+                        aggregations.push(this.client.aggregateAccounts(source.id!))
+                    }
+                }
+                await Promise.all(aggregations)
+            } else {
+                this.handleError('Unable to find Identity Fusion source latest account aggregation')
+            }
+        }
+    }
+
     private async listSourceAccounts(account: Account): Promise<Account[]> {
         let sourceAccounts: Account[] = []
 
@@ -378,23 +398,6 @@ export class ContextHelper {
             logger.debug(lm(`New account. Needs to be enabled.`, c, 2))
         } else {
             logger.debug(lm(`Existing account. Enforcing defined correlation.`, c, 1))
-            // if (!identity) {
-            //     let count = 0
-            //     let wait = IDENTITYNOTFOUNDWAIT
-            //     while (!identity) {
-            //         identity = await this.client.getIdentityBySearch(account.identityId!)
-            //         if (!identity) {
-            //             if (++count > IDENTITYNOTFOUNDRETRIES)
-            //                 throw new Error(
-            //                     `Identity ${account.identityId} for account ${account.nativeIdentity} not found`
-            //                 )
-
-            //             logger.warn(lm(`Identity ID ${account.identityId} not found. Re-trying...`, c, 1))
-            //             await sleep(wait)
-            //             wait = wait + IDENTITYNOTFOUNDWAIT
-            //         }
-            //     }
-            // }
             const identity = await this.getAccountIdentity(account)
 
             if (identity) {
@@ -409,7 +412,7 @@ export class ContextHelper {
                     try {
                         if (
                             !accountIds.includes(acc) &&
-                            (this.initiated === 'partial' || this.authoritativeAccounts.find((x) => x.id === acc))
+                            (this.initiated === 'lazy' || this.authoritativeAccounts.find((x) => x.id === acc))
                         ) {
                             logger.debug(lm(`Correlating ${acc} account with ${uid}.`, c, 1))
                             const response = await this.client.correlateAccount(identity.id as string, acc)
@@ -1222,6 +1225,13 @@ export class ContextHelper {
                 description: 'Reviews',
                 type: 'string',
                 multi: true,
+                entitlement: false,
+            },
+            {
+                name: 'IIQDisabled',
+                description: 'Disabled',
+                type: 'string',
+                multi: false,
                 entitlement: false,
             },
         ]

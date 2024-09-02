@@ -42,9 +42,12 @@ import {
     Transform,
     TransformsApi,
     UsageType,
+    SourcesBetaApi,
+    TaskManagementBetaApi,
 } from 'sailpoint-api-client'
 import { URL } from 'url'
 import { logger } from '@sailpoint/connector-sdk'
+import { TASKRESULTRETRIES, TASKRESULTWAIT } from './constants'
 
 const TOKEN_URL_PATH = '/oauth/token'
 
@@ -553,6 +556,23 @@ export class SDKClient {
         const response = await api.searchPost({ search, limit: 1 })
 
         return response.data.length === 0 ? undefined : response.data[0]
+    }
+
+    async aggregateAccounts(id: string): Promise<void> {
+        const sourceApi = new SourcesBetaApi(this.config)
+
+        const response = await sourceApi.importAccounts({ id })
+        const taskApi = new TaskManagementBetaApi(this.config)
+
+        let count = TASKRESULTRETRIES
+        while (--count > 0) {
+            const result = await taskApi.getTaskStatus({ id: response.data.task!.id! })
+            if (result.data.completed) {
+                break
+            } else {
+                await sleep(TASKRESULTWAIT)
+            }
+        }
     }
 
     async getProvisioningPolicy(sourceId: string, usageType: UsageType) {

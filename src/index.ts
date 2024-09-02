@@ -18,15 +18,16 @@ import {
 } from '@sailpoint/connector-sdk'
 import { Account, IdentityDocument } from 'sailpoint-api-client'
 import { EditEmail, ReviewEmail } from './model/email'
-import { buildReviewFromFormInstance, datedMessage, getFormValue, opLog, deleteArrayItem } from './utils'
+import { buildReviewFromFormInstance, datedMessage, getFormValue, opLog, deleteArrayItem, envInfo } from './utils'
 
 import { ContextHelper } from './contextHelper'
 import { PROCESSINGWAIT } from './constants'
 import { UniqueAccount } from './model/account'
+import { Config } from './model/config'
 
 // Connector must be exported as module property named connector
 export const connector = async () => {
-    const config = await readConfig()
+    const config: Config = await readConfig()
     const ctx = new ContextHelper(config)
 
     //==============================================================================================================
@@ -37,6 +38,7 @@ export const connector = async () => {
         await ctx.init(undefined, true)
         const source = ctx.getSource()
         const sources = ctx.listSources()
+        envInfo()
 
         if (!source) {
             throw new ConnectorError('Unable to connect to IdentityNow! Please check your configuration')
@@ -58,23 +60,19 @@ export const connector = async () => {
 
         try {
             opLog(config, input)
-
             //Resetting accounts
             if (config.reset) return
 
             //Compiling info
             logger.info('Loading data.')
             await ctx.init(input.schema)
+            await ctx.checkSelectedSourcesAggregation()
             const processedAccountIDs = ctx.listProcessedAccountIDs()
             let pendingAccounts: Account[]
             const authoritativeAccounts = await ctx.listAuthoritativeAccounts()
             pendingAccounts = authoritativeAccounts.filter((x) => !processedAccountIDs.includes(x.id!))
-            if (config.includeExisting) {
-                logger.debug('Including existing identities.')
-            } else {
-                logger.debug('Excluding existing identities.')
-                pendingAccounts = pendingAccounts.filter((x) => x.uncorrelated === true)
-            }
+            logger.debug('Excluding existing identities.')
+            pendingAccounts = pendingAccounts.filter((x) => x.uncorrelated === true)
 
             if ((await ctx.isMergingEnabled()) && !ctx.isFirstRun()) {
                 //PROCESS FORM INSTANCES
@@ -295,6 +293,7 @@ export const connector = async () => {
 
             //BUILD RESULTING ACCOUNTS
             logger.info('Sending accounts.')
+
             for await (const account of ctx.listUniqueAccounts()) {
                 // console.log(`${new Date().toISOString()} ${account.attributes.uniqueID}`)
                 logger.debug({ account })

@@ -81,7 +81,7 @@ export class SDKClient {
         }
     }
 
-    async listIdentities(): Promise<IdentityDocument[]> {
+    async listIdentities(attributes: string[]): Promise<IdentityDocument[]> {
         const api = new SearchApi(this.config)
         const search: Search = {
             indices: ['identities'],
@@ -90,6 +90,9 @@ export class SDKClient {
             },
             sort: ['name'],
             includeNested: true,
+            queryResultFilter: {
+                includes: attributes,
+            },
         }
 
         const response = await Paginator.paginateSearchApi(api, search)

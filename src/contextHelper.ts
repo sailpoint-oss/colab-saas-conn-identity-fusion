@@ -36,8 +36,18 @@ import {
     deleteArrayItem,
     stringifyIdentity,
     stringifyScore,
+    combineArrays,
+    sleep,
 } from './utils'
-import { EDIT_FORM_NAME, UNIQUE_FORM_NAME, WORKFLOW_NAME, reservedAttributes } from './constants'
+import {
+    EDIT_FORM_NAME,
+    IDENTITYNOTFOUNDRETRIES,
+    IDENTITYNOTFOUNDWAIT,
+    NONAGGREGABLE_TYPES,
+    UNIQUE_FORM_NAME,
+    WORKFLOW_NAME,
+    reservedAttributes,
+} from './constants'
 import { EditForm, UniqueForm } from './model/form'
 import { buildUniqueID } from './utils/unique'
 import { ReviewEmail, ErrorEmail, ReportEmail } from './model/email'
@@ -112,6 +122,29 @@ export class ContextHelper {
         this.baseUrl = new URL(this.config.baseurl.replace('.api.', '.')).origin
     }
 
+    releaseIdentityData() {
+        this.identities = []
+        this.currentIdentities = []
+    }
+
+    releaseSourceData() {
+        this.sources = []
+    }
+
+    releaseFormData() {
+        this.forms = []
+    }
+
+    releaseUniqueFormData() {
+        this.uniqueFormInstances = []
+        this.uniqueForms = []
+    }
+
+    releaseEditFormData() {
+        this.editFormInstances = []
+        this.editForms = []
+    }
+
     async init(schema?: AccountSchema, lazy?: boolean) {
         if (!this.initiated) {
             logger.debug(lm(`Looking for connector instance`, this.c))
@@ -121,7 +154,7 @@ export class ContextHelper {
             const id = this.config!.spConnectorInstanceId as string
             const allSources = await this.client.listSources()
             this.source = allSources.find((x) => (x.connectorAttributes as any).spConnectorInstanceId === id)
-            this.sources = allSources.filter((x) => this.config?.sources.includes(x.name))
+            this.sources = allSources.filter((x) => this.config!.sources.includes(x.name))
 
             if (!this.source) {
                 throw new ConnectorError('No connector source was found on the tenant.')
@@ -144,15 +177,27 @@ export class ContextHelper {
         }
 
         if (!lazy && this.initiated === 'lazy') {
-            this.identities = await this.listIdentities()
-            this.accounts = await this.listAccounts()
-            this.reviewerIDs = await this.buildReviewersMap()
-            this.mergingEnabled = this.config.merging_isEnabled && this.listAllReviewerIDs().length > 0
+            const promises = []
+            promises.push(
+                this.listIdentities().then((identities) => {
+                    this.identities = identities
+                })
+            )
+
+            promises.push(
+                this.listAccounts().then((accounts) => {
+                    this.accounts = accounts
+                })
+            )
+
+            promises.push(this.loadForms())
+            promises.push(this.loadReviewersMap())
+            await Promise.all(promises)
+            this.mergingEnabled = this.config.merging_isEnabled
             const identityIDs = this.accounts.map((x) => x.identityId)
             this.uuids = this.accounts.map((x) => x.attributes!.uuid).filter((x) => x !== undefined)
             this.authoritativeAccounts = await this.fetchAuthoritativeAccounts()
             this.currentIdentities = this.identities.filter((x) => identityIDs.includes(x.id))
-            await this.loadForms()
 
             if (this.config.uid_scope === 'source') {
                 logger.info('Compiling current IDs for source scope.')
@@ -164,6 +209,10 @@ export class ContextHelper {
 
             this.initiated = 'full'
         }
+    }
+
+    private async loadReviewersMap() {
+        this.reviewerIDs = await this.buildReviewersMap()
     }
 
     getSource(): Source {
@@ -209,7 +258,16 @@ export class ContextHelper {
     private async listIdentities(): Promise<IdentityDocument[]> {
         const c = 'listIdentities'
         logger.info(lm('Fetching identities.', c))
-        const identities = await this.client.listIdentities()
+        const attributes = new Set([
+            'id',
+            'displayName',
+            'accounts',
+            'attributes.cloudAuthoritativeSource',
+            'attributes.uid',
+        ])
+        this.config.merging_map.map((x) => `attributes.${x.identity}`).forEach((x) => attributes.add(x))
+        this.config.merging_attributes.map((x) => `attributes.${x}`).forEach((x) => attributes.add(x))
+        const identities = await this.client.listIdentities([...attributes])
 
         return identities ? identities : []
     }
@@ -237,10 +295,9 @@ export class ContextHelper {
 
     private async listAccounts(): Promise<Account[]> {
         const c = 'listAccounts'
-        const source = this.getSource()
 
         logger.info(lm('Fetching existing accounts.', c))
-        let accounts = await this.client.listAccountsBySource(source.id!)
+        let accounts = await this.client.listAccountsBySource(this.source!.id!)
         accounts = accounts || []
 
         for (const account of accounts) {
@@ -273,7 +330,13 @@ export class ContextHelper {
         if (this.initiated === 'full') {
             account = this.accounts.find((x) => x.nativeIdentity === id)
         } else {
-            account = await this.client.getAccountBySourceAndNativeIdentity(this.getSource().id!, id)
+            let count = IDENTITYNOTFOUNDRETRIES
+            do {
+                account = await this.client.getAccountBySourceAndNativeIdentity(this.getSource().id!, id)
+            } while (!account && --count > 0)
+            {
+                await sleep(IDENTITYNOTFOUNDWAIT)
+            }
         }
 
         return account
@@ -299,7 +362,7 @@ export class ContextHelper {
         return this.accounts.map((x) => x.identityId!)
     }
 
-    async listAuthoritativeAccounts(): Promise<Account[]> {
+    listAuthoritativeAccounts(): Account[] {
         return this.authoritativeAccounts
     }
 
@@ -322,22 +385,23 @@ export class ContextHelper {
         }
     }
 
-    async *listUniqueAccounts(): AsyncGenerator<UniqueAccount> {
+    listUniqueAccounts(): Promise<UniqueAccount>[] {
         const c = 'listUniqueAccounts'
 
         logger.debug(lm('Updating accounts.', c))
-        for (const account of this.accounts) {
-            const uniqueAccount = await this.refreshUniqueAccount(account)
-            if (uniqueAccount) {
-                yield uniqueAccount
-            }
-        }
+
+        const promises = this.accounts.map((x) => this.refreshUniqueAccount(x))
+        this.accounts = []
+
+        return promises
     }
 
     private async getAccountIdentity(account: Account): Promise<IdentityDocument | undefined> {
         let identity: IdentityDocument | undefined
         if (this.initiated === 'full') {
-            identity = this.identities.find((x) => x.id === account.identityId)
+            const index = this.identities.findIndex((x) => x.id === account.identityId)
+            identity = this.identities[index]
+            // this.identities = this.identities.splice(index, 1)
         } else {
             identity = await this.client.getIdentityBySearch(account.identityId!)
         }
@@ -354,7 +418,10 @@ export class ContextHelper {
                 for (const source of this.sources) {
                     const latestAggregation = await this.client.getLatestAccountAggregation(source.id!)
                     const latestAggregationDate = new Date(latestAggregation ? latestAggregation.created! : 0)
-                    if (latestFusionAggregationDate > latestAggregationDate) {
+                    if (
+                        !NONAGGREGABLE_TYPES.includes(source.type!) &&
+                        latestFusionAggregationDate > latestAggregationDate
+                    ) {
                         aggregations.push(this.client.aggregateAccounts(source.id!))
                     }
                 }
@@ -392,160 +459,73 @@ export class ContextHelper {
 
         const sourceAccounts = await this.listSourceAccounts(account)
         let needsRefresh = false
-        let sourceAccountsChanged = false
+        // let sourceAccountsChanged = false
 
         if (account.uncorrelated) {
             logger.debug(lm(`New account. Needs to be enabled.`, c, 2))
+            needsRefresh = true
         } else {
             logger.debug(lm(`Existing account. Enforcing defined correlation.`, c, 1))
             const identity = await this.getAccountIdentity(account)
 
+            let accountIds: string[] = []
             if (identity) {
                 const accounts = identity.accounts!
                 const originalAccountIds = [...account.attributes!.accounts]
-                const accountIds = accounts
-                    .filter((x) => this.config.sources.includes(x.source!.name!))
-                    .map((x) => x.id!)
+                accountIds = accounts.filter((x) => this.config.sources.includes(x.source!.name!)).map((x) => x.id!)
 
-                for (const acc of account.attributes!.accounts as string[]) {
-                    const uid: string = (identity.attributes as any).uid
-                    try {
-                        if (
-                            !accountIds.includes(acc) &&
-                            (this.initiated === 'lazy' || this.authoritativeAccounts.find((x) => x.id === acc))
-                        ) {
-                            logger.debug(lm(`Correlating ${acc} account with ${uid}.`, c, 1))
-                            const response = await this.client.correlateAccount(identity.id as string, acc)
-                            accountIds.push(acc)
-                        }
-                    } catch (e) {
-                        logger.error(lm(`Failed to correlate ${acc} account with ${uid}.`, c, 1))
-                    }
-                    account.attributes!.accounts = accountIds
-                    if (
-                        !originalAccountIds.every((item) => accountIds.includes(item)) ||
-                        !accountIds.every((item) => originalAccountIds.includes(item))
-                    ) {
-                        sourceAccountsChanged = true
-                        const isEdited = account.attributes!.statuses.includes('edited')
-                        if (isEdited) {
-                            deleteArrayItem(account.attributes!.statuses, 'edited')
-                            const message = datedMessage(`Automatically unedited by change in contributing accounts`)
-                            account.attributes!.history.push(message)
-                        }
+                if (
+                    !originalAccountIds.every((item) => accountIds.includes(item)) ||
+                    !accountIds.every((item) => originalAccountIds.includes(item))
+                ) {
+                    // sourceAccountsChanged = true
+                    needsRefresh = true
+                    const isEdited = account.attributes!.statuses.includes('edited')
+                    if (isEdited) {
+                        deleteArrayItem(account.attributes!.statuses, 'edited')
+                        const message = datedMessage(`Automatically unedited by change in contributing accounts`)
+                        account.attributes!.history.push(message)
                     }
                 }
-            }
-        }
-
-        if (account.uncorrelated) {
-            needsRefresh = true
-            this.setUUID(account)
-        } else {
-            if (sourceAccountsChanged) {
-                needsRefresh = true
             } else {
-                if (!account.attributes!.statuses.some((x: string) => ['edited', 'orphan'].includes(x))) {
-                    const lastConfigChange = new Date(this.source!.modified!).getTime()
-                    const lastModified = new Date(account.modified!).getTime()
-                    if (lastModified < lastConfigChange) {
-                        needsRefresh = true
-                    } else {
-                        const newSourceData = sourceAccounts.find((x) => new Date(x.modified!).getTime() > lastModified)
-                        needsRefresh = newSourceData ? true : false
+                needsRefresh = false
+            }
+
+            for (const acc of account.attributes!.accounts as string[]) {
+                try {
+                    if (
+                        !accountIds.includes(acc) &&
+                        (this.initiated === 'lazy' || this.authoritativeAccounts.find((x) => x.id === acc))
+                    ) {
+                        logger.debug(lm(`Correlating ${acc} account with ${account.identity?.name}.`, c, 1))
+                        const response = await this.client.correlateAccount(account.identityId! as string, acc)
+                        accountIds.push(acc)
                     }
+                } catch (e) {
+                    logger.error(lm(`Failed to correlate ${acc} account with ${account.identity?.name}.`, c, 1))
+                }
+            }
+            account.attributes!.accounts = accountIds
+
+            if (account.attributes!.accounts.length === 0) {
+                needsRefresh = false
+            } else if (!account.attributes!.statuses.some((x: string) => ['edited', 'orphan'].includes(x))) {
+                const lastConfigChange = new Date(this.source!.modified!).getTime()
+                const lastModified = new Date(account.modified!).getTime()
+                if (lastModified < lastConfigChange) {
+                    needsRefresh = true
+                } else {
+                    const newSourceData = sourceAccounts.find((x) => new Date(x.modified!).getTime() > lastModified)
+                    needsRefresh = newSourceData ? true : false
                 }
             }
         }
 
         const schema = await this.getSchema()
         try {
-            const attributes = account.attributes
             if (needsRefresh) {
                 logger.debug(lm(`Refreshing ${account.attributes!.uniqueID} account`, c, 1))
-
-                attributes: for (const attrDef of schema.attributes) {
-                    if (!reservedAttributes.includes(attrDef.name)) {
-                        const attrConf = this.config.merging_map.find((x) => x.identity === attrDef.name)
-                        const attributeMerge = attrConf?.attributeMerge || this.config.attributeMerge
-                        let multiValue: string[] = []
-                        let firstSource = true
-                        accounts: for (const sourceAccount of sourceAccounts) {
-                            let values: any[] = []
-                            let value: any
-                            if (attrConf) {
-                                //First account attribute found goes
-                                accountAttributes: for (const accountAttr of attrConf.account) {
-                                    if (!sourceAccount.attributes) {
-                                        const message = `Account ${sourceAccount.nativeIdentity} has no attributes`
-                                        logger.warn(message)
-                                        continue
-                                    }
-                                    value = sourceAccount.attributes![accountAttr]
-                                    if (value) {
-                                        values.push(value)
-                                        if (['first', 'source'].includes(attributeMerge)) break accountAttributes
-                                    }
-                                }
-                            } else {
-                                value = sourceAccount.attributes![attrDef.name]
-                                if (value) values.push(value)
-                            }
-
-                            if (values.length > 0) {
-                                values = values.map((x) => attrSplit(x))
-
-                                if (['multi', 'concatenate'].includes(attributeMerge)) {
-                                    multiValue = multiValue.concat(values).flat()
-                                }
-                                values: for (const value of values) {
-                                    switch (attributeMerge) {
-                                        case 'first':
-                                            if (firstSource) {
-                                                if (value.length === 1) {
-                                                    attributes![attrDef.name] = value[0]
-                                                } else {
-                                                    attributes![attrDef.name] = value
-                                                }
-                                                firstSource = false
-                                                break accounts
-                                            }
-                                            break
-
-                                        case 'source':
-                                            const source = attrConf?.source
-                                            if (sourceAccount.sourceName === source) {
-                                                if (value.length === 1) {
-                                                    attributes![attrDef.name] = value[0]
-                                                } else {
-                                                    attributes![attrDef.name] = value
-                                                }
-                                                break accounts
-                                            }
-                                            break
-                                        default:
-                                            break
-                                    }
-                                }
-                            }
-                        }
-
-                        switch (attributeMerge) {
-                            case 'multi':
-                                attributes![attrDef.name] = [...new Set(multiValue)].sort()
-                                break
-
-                            case 'concatenate':
-                                attributes![attrDef.name] = attrConcat([...new Set(multiValue)].sort())
-                                break
-
-                            default:
-                                break
-                        }
-                    }
-                }
-
-                attributes!.statuses = Array.from(new Set(attributes!.statuses))
+                this.refreshAccountAttributes(account, sourceAccounts, schema)
             }
         } catch (error) {
             logger.error(error as string)
@@ -556,7 +536,99 @@ export class ContextHelper {
         return uniqueAccount
     }
 
+    private refreshAccountAttributes(account: Account, sourceAccounts: Account[], schema: AccountSchema) {
+        if (sourceAccounts.length > 0) {
+            const attributes: { [key: string]: any } = {}
+
+            attributes: for (const attrDef of schema.attributes) {
+                if (!reservedAttributes.includes(attrDef.name)) {
+                    const attrConf = this.config.merging_map.find((x) => x.identity === attrDef.name)
+                    const attributeMerge = attrConf?.attributeMerge || this.config.attributeMerge
+                    let multiValue: string[] = []
+                    let firstSource = true
+                    accounts: for (const sourceAccount of sourceAccounts) {
+                        let values: any[] = []
+                        let value: any
+                        if (attrConf) {
+                            //First account attribute found goes
+                            accountAttributes: for (const accountAttr of attrConf.account) {
+                                if (!sourceAccount.attributes) {
+                                    const message = `Account ${sourceAccount.nativeIdentity} has no attributes`
+                                    logger.warn(message)
+                                    continue
+                                }
+                                value = sourceAccount.attributes![accountAttr]
+                                if (value) {
+                                    values.push(value)
+                                    if (['first', 'source'].includes(attributeMerge)) break accountAttributes
+                                }
+                            }
+                        } else {
+                            value = sourceAccount.attributes![attrDef.name]
+                            if (value) values.push(value)
+                        }
+
+                        if (values.length > 0) {
+                            values = values.map((x) => attrSplit(x))
+
+                            if (['multi', 'concatenate'].includes(attributeMerge)) {
+                                multiValue = multiValue.concat(values).flat()
+                            }
+                            values: for (const value of values) {
+                                switch (attributeMerge) {
+                                    case 'first':
+                                        if (firstSource) {
+                                            if (value.length === 1) {
+                                                attributes![attrDef.name] = value[0]
+                                            } else {
+                                                attributes![attrDef.name] = value
+                                            }
+                                            firstSource = false
+                                            break accounts
+                                        }
+                                        break
+
+                                    case 'source':
+                                        const source = attrConf?.source
+                                        if (sourceAccount.sourceName === source) {
+                                            if (value.length === 1) {
+                                                attributes![attrDef.name] = value[0]
+                                            } else {
+                                                attributes![attrDef.name] = value
+                                            }
+                                            break accounts
+                                        }
+                                        break
+                                    default:
+                                        break
+                                }
+                            }
+                        }
+                    }
+
+                    switch (attributeMerge) {
+                        case 'multi':
+                            attributes![attrDef.name] = [...new Set(multiValue)].sort()
+                            break
+
+                        case 'concatenate':
+                            attributes![attrDef.name] = attrConcat([...new Set(multiValue)].sort())
+                            break
+
+                        default:
+                            break
+                    }
+                } else {
+                    attributes[attrDef.name] = account.attributes![attrDef.name]
+                }
+            }
+
+            account.attributes = attributes
+        }
+    }
+
     async buildReport(id: string) {
+        const c = 'buildReport'
         const fusionAccount = (await this.getFusionAccount(id)) as Account
         const identity = (await this.getIdentityById(fusionAccount.identityId!)) as IdentityDocument
         const authoritativeAccounts = await this.listAuthoritativeAccounts()
@@ -564,6 +636,7 @@ export class ContextHelper {
         const analysis = await Promise.all(pendingAccounts.map((x) => this.analyzeUncorrelatedAccount(x)))
 
         const email = new ReportEmail(analysis, this.config.merging_attributes, identity)
+        logger.info(lm(`Sending report to  ${identity.displayName}`, c, 1))
         this.sendEmail(email)
     }
 
@@ -582,6 +655,8 @@ export class ContextHelper {
             const identity = this.identities.find((x) => x.id === account.identityId) as IdentityDocument
             uniqueID = identity?.attributes!.uid
         }
+
+        this.setUUID(account)
 
         uniqueAccount.attributes!.uniqueID = uniqueID
         uniqueAccount.attributes!.statuses = [status]
@@ -712,11 +787,11 @@ export class ContextHelper {
         this.editFormInstances = formInstances.filter((x) => editFormIDs.includes(x.formDefinitionId))
     }
 
-    async listUniqueForms(): Promise<FormDefinitionResponseBeta[]> {
+    listUniqueForms(): FormDefinitionResponseBeta[] {
         return this.uniqueForms
     }
 
-    async listEditForms(): Promise<FormDefinitionResponseBeta[]> {
+    listEditForms(): FormDefinitionResponseBeta[] {
         return this.editForms
     }
 
@@ -821,8 +896,8 @@ export class ContextHelper {
         return currentFormInstance
     }
 
-    async isMergingEnabled(): Promise<boolean> {
-        return this.config.merging_isEnabled && this.listAllReviewerIDs().length > 0
+    isMergingEnabled(): boolean {
+        return this.mergingEnabled
     }
 
     private findIdenticalMatch(account: Account): IdentityDocument | undefined {
@@ -939,7 +1014,7 @@ export class ContextHelper {
         let status
         let message = ''
 
-        if (this.mergingEnabled) {
+        if (this.isMergingEnabled()) {
             const { identicalMatch, similarMatches } = await this.analyzeUncorrelatedAccount(uncorrelatedAccount)
 
             if (identicalMatch) {
@@ -1230,6 +1305,13 @@ export class ContextHelper {
             {
                 name: 'IIQDisabled',
                 description: 'Disabled',
+                type: 'string',
+                multi: false,
+                entitlement: false,
+            },
+            {
+                name: 'enabled',
+                description: 'Enabled',
                 type: 'string',
                 multi: false,
                 entitlement: false,

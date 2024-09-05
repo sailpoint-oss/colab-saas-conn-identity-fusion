@@ -10,6 +10,7 @@
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
         "types": ["node"]
+        // "lib": ["ES2020", "dom", "dom.iterable"]
     },
     "include": ["src/**/*"],
     "exclude": ["node_modules", "**/*.spec.ts", "**/*.spec.js"]

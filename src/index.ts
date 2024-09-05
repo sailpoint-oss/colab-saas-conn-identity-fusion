@@ -68,16 +68,14 @@ export const connector = async () => {
             await ctx.init(input.schema)
             await ctx.checkSelectedSourcesAggregation()
             const processedAccountIDs = ctx.listProcessedAccountIDs()
-            let pendingAccounts: Account[]
-            const authoritativeAccounts = await ctx.listAuthoritativeAccounts()
-            pendingAccounts = authoritativeAccounts.filter((x) => !processedAccountIDs.includes(x.id!))
-            logger.debug('Excluding existing identities.')
-            pendingAccounts = pendingAccounts.filter((x) => x.uncorrelated === true)
+            let pendingAccounts = ctx
+                .listAuthoritativeAccounts()
+                .filter((x) => !processedAccountIDs.includes(x.id!) && x.uncorrelated === true)
 
-            if ((await ctx.isMergingEnabled()) && !ctx.isFirstRun()) {
+            if (ctx.isMergingEnabled() && !ctx.isFirstRun()) {
                 //PROCESS FORM INSTANCES
                 logger.info('Processing existing unique forms.')
-                const forms = await ctx.listUniqueForms()
+                const forms = ctx.listUniqueForms()
                 forms: for (const currentForm of forms) {
                     let cancelled = true
                     let finished = false
@@ -245,8 +243,10 @@ export const connector = async () => {
                 }
             }
 
+            ctx.releaseUniqueFormData()
+
             //PROCESS EDIT FORM INSTANCES
-            const forms = await ctx.listEditForms()
+            const forms = ctx.listEditForms()
             logger.info('Processing existing edit forms.')
             forms: for (const currentForm of forms) {
                 let cancelled = true
@@ -291,19 +291,27 @@ export const connector = async () => {
                 }
             }
 
+            // ctx.releaseSourceData()
+            ctx.releaseFormData()
+            ctx.releaseEditFormData()
+
             //BUILD RESULTING ACCOUNTS
             logger.info('Sending accounts.')
 
-            for await (const account of ctx.listUniqueAccounts()) {
-                // console.log(`${new Date().toISOString()} ${account.attributes.uniqueID}`)
-                logger.debug({ account })
-                res.send(account)
+            const promises = ctx.listUniqueAccounts()
+            for (const promise of promises) {
+                promise.then((account) => {
+                    logger.debug({ account })
+                    res.send(account)
+                })
             }
 
-            ctx.logErrors(context, input)
+            await Promise.all(promises)
         } finally {
             clearInterval(interval)
         }
+
+        ctx.logErrors(context, input)
     }
 
     const stdAccountRead: StdAccountReadHandler = async (context, input, res) => {

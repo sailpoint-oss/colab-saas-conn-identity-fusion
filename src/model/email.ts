@@ -52,7 +52,7 @@ export class EditEmail implements TestWorkflowRequestBeta {
 export class ErrorEmail implements TestWorkflowRequestBeta {
     input: object
     constructor(source: Source, recipient: string, error: string) {
-        const subject = `IdentityNow Identities [${source.name}] error report`
+        const subject = `Identity Fusion [${source.name}] error report`
         const body = error
         this.input = {
             recipients: [recipient],

@@ -12,6 +12,7 @@ export class UniqueAccount implements StdAccountListOutput {
         this.disabled = account.uncorrelated
         this.attributes = account.attributes!
         this.attributes.IIQDisabled = this.disabled
+        this.attributes.enabled = !this.disabled
 
         const accountsCount = account.attributes!.accounts.length
         const statuses = this.attributes.statuses as string[]
@@ -23,6 +24,7 @@ export class UniqueAccount implements StdAccountListOutput {
         } else if (statuses.includes('orphan')) {
             deleteArrayItem(statuses, 'orphan')
         }
+        this.attributes!.statuses = Array.from(new Set(statuses))
 
         if (schema) {
             this.identity = account.attributes![schema.identityAttribute]

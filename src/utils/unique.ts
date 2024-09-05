@@ -31,6 +31,7 @@ export const buildUniqueID = async (
         } else {
             context = { ...account.attributes }
         }
+
         if (counter > 0) {
             const c = '0'.repeat(Math.max(0, config.uid_digits - counter.toString().length)) + counter
             context.counter = c

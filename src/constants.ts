@@ -21,4 +21,6 @@ export const reservedAttributes = [
     'IIQDisabled',
     'IIQLocked',
     'idNowDescription',
+    'enabled',
 ]
+export const NONAGGREGABLE_TYPES = ['DelimitedFile']

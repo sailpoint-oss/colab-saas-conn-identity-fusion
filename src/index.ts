@@ -388,6 +388,7 @@ export const connector = async () => {
             }
         }
 
+        uniqueAccount!.attributes!.statuses = Array.from(new Set(uniqueAccount!.attributes!.statuses))
         const account = (await ctx.refreshUniqueAccount(uniqueAccount!)) as UniqueAccount
 
         logger.info({ account })
@@ -401,7 +402,9 @@ export const connector = async () => {
 
         if (config.reset) return
 
-        await ctx.init(input.schema, true)
+        const lazy = input.changes.findIndex((x) => x.value === 'report') === -1 ? true : false
+
+        await ctx.init(input.schema, lazy)
 
         let account = await ctx.buildUniqueAccountFromID(input.identity)
         let message: string
@@ -450,7 +453,6 @@ export const connector = async () => {
                                 break
 
                             case 'report':
-                                await ctx.init()
                                 ctx.buildReport(input.identity)
                                 break
 
@@ -501,6 +503,8 @@ export const connector = async () => {
                         throw new ConnectorError(message, ConnectorErrorType.Generic)
                 }
             }
+            const statuses = account.attributes.statuses as string[]
+            account.attributes.statuses = Array.from(new Set(statuses))
             //Need to investigate about std:account:update operations without changes but adding this for the moment
         } else if ('attributes' in input) {
             logger.warn(

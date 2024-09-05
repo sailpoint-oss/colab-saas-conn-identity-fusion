@@ -24,7 +24,6 @@ export class UniqueAccount implements StdAccountListOutput {
         } else if (statuses.includes('orphan')) {
             deleteArrayItem(statuses, 'orphan')
         }
-        this.attributes!.statuses = Array.from(new Set(statuses))
 
         if (schema) {
             this.identity = account.attributes![schema.identityAttribute]

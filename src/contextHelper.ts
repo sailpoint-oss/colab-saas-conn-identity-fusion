@@ -36,7 +36,6 @@ import {
     deleteArrayItem,
     stringifyIdentity,
     stringifyScore,
-    combineArrays,
     sleep,
 } from './utils'
 import {
@@ -146,37 +145,35 @@ export class ContextHelper {
     }
 
     async init(schema?: AccountSchema, lazy?: boolean) {
-        if (!this.initiated) {
-            logger.debug(lm(`Looking for connector instance`, this.c))
-            if (schema) {
-                this.loadSchema(schema)
-            }
-            const id = this.config!.spConnectorInstanceId as string
-            const allSources = await this.client.listSources()
-            this.source = allSources.find((x) => (x.connectorAttributes as any).spConnectorInstanceId === id)
-            this.sources = allSources.filter((x) => this.config!.sources.includes(x.name))
+        logger.debug(lm(`Looking for connector instance`, this.c))
+        if (schema) {
+            this.loadSchema(schema)
+        }
+        const id = this.config!.spConnectorInstanceId as string
+        const allSources = await this.client.listSources()
+        this.source = allSources.find((x) => (x.connectorAttributes as any).spConnectorInstanceId === id)
+        this.sources = allSources.filter((x) => this.config!.sources.includes(x.name))
 
-            if (!this.source) {
-                throw new ConnectorError('No connector source was found on the tenant.')
-            }
-
-            const owner = getOwnerFromSource(this.source)
-            const wfName = `${WORKFLOW_NAME} (${this.config!.cloudDisplayName})`
-            this.emailer = await this.getEmailWorkflow(wfName, owner)
-
-            this.identities = []
-            this.accounts = []
-            this.authoritativeAccounts = []
-            this.currentIdentities = []
-            this.uniqueForms = []
-            this.uniqueFormInstances = []
-            this.editForms = []
-            this.editFormInstances = []
-            this.errors = []
-            this.initiated = 'lazy'
+        if (!this.source) {
+            throw new ConnectorError('No connector source was found on the tenant.')
         }
 
-        if (!lazy && this.initiated === 'lazy') {
+        const owner = getOwnerFromSource(this.source)
+        const wfName = `${WORKFLOW_NAME} (${this.config!.cloudDisplayName})`
+        this.emailer = await this.getEmailWorkflow(wfName, owner)
+
+        this.identities = []
+        this.accounts = []
+        this.authoritativeAccounts = []
+        this.currentIdentities = []
+        this.uniqueForms = []
+        this.uniqueFormInstances = []
+        this.editForms = []
+        this.editFormInstances = []
+        this.errors = []
+        this.initiated = 'lazy'
+
+        if (!lazy) {
             const promises = []
             promises.push(
                 this.listIdentities().then((identities) => {
@@ -234,7 +231,7 @@ export class ContextHelper {
         if (source) {
             return this.reviewerIDs.get(source) || []
         } else {
-            return Array.from(new Set(Array.from(this.reviewerIDs.values()).flat()))
+            return this.listAllReviewerIDs()
         }
     }
 
@@ -326,20 +323,11 @@ export class ContextHelper {
     }
 
     async getFusionAccount(id: string): Promise<Account | undefined> {
-        let account
         if (this.initiated === 'full') {
-            account = this.accounts.find((x) => x.nativeIdentity === id)
+            return this.accounts.find((x) => x.nativeIdentity === id)
         } else {
-            let count = IDENTITYNOTFOUNDRETRIES
-            do {
-                account = await this.client.getAccountBySourceAndNativeIdentity(this.getSource().id!, id)
-            } while (!account && --count > 0)
-            {
-                await sleep(IDENTITYNOTFOUNDWAIT)
-            }
+            return await this.client.getAccountBySourceAndNativeIdentity(this.getSource().id!, id)
         }
-
-        return account
     }
 
     async getAccountByIdentity(identity: IdentityDocument): Promise<Account | undefined> {

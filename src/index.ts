@@ -18,7 +18,7 @@ import {
 } from '@sailpoint/connector-sdk'
 import { Account, IdentityDocument } from 'sailpoint-api-client'
 import { EditEmail, ReviewEmail } from './model/email'
-import { buildReviewFromFormInstance, datedMessage, getFormValue, opLog, deleteArrayItem, envInfo } from './utils'
+import { buildReviewFromFormInstance, datedMessage, getFormValue, opLog, deleteArrayItem } from './utils'
 
 import { ContextHelper } from './contextHelper'
 import { PROCESSINGWAIT } from './constants'
@@ -28,17 +28,18 @@ import { Config } from './model/config'
 // Connector must be exported as module property named connector
 export const connector = async () => {
     const config: Config = await readConfig()
-    const ctx = new ContextHelper(config)
 
     //==============================================================================================================
 
     //TODO improve
     const stdTest: StdTestConnectionHandler = async (context, input, res) => {
         opLog(config, input)
+
+        const ctx = new ContextHelper(config)
         await ctx.init(undefined, true)
+
         const source = ctx.getSource()
         const sources = ctx.listSources()
-        envInfo()
 
         if (!source) {
             throw new ConnectorError('Unable to connect to IdentityNow! Please check your configuration')
@@ -58,6 +59,7 @@ export const connector = async () => {
             res.keepAlive()
         }, PROCESSINGWAIT)
 
+        const ctx = new ContextHelper(config)
         try {
             opLog(config, input)
             //Resetting accounts
@@ -291,7 +293,6 @@ export const connector = async () => {
                 }
             }
 
-            // ctx.releaseSourceData()
             ctx.releaseFormData()
             ctx.releaseEditFormData()
 
@@ -316,16 +317,16 @@ export const connector = async () => {
 
     const stdAccountRead: StdAccountReadHandler = async (context, input, res) => {
         opLog(config, input)
-
         logger.info(`Reading ${input.identity} account.`)
-
         if (config.reset) return
 
-        await ctx.init(input.schema, true)
         //Keepalive
         const interval = setInterval(() => {
             res.keepAlive()
         }, PROCESSINGWAIT)
+
+        const ctx = new ContextHelper(config)
+        await ctx.init(input.schema, true)
 
         try {
             const account = await ctx.buildUniqueAccountFromID(input.identity)
@@ -336,6 +337,8 @@ export const connector = async () => {
         } finally {
             clearInterval(interval)
         }
+
+        ctx.logErrors(context, input)
     }
 
     const stdAccountCreate: StdAccountCreateHandler = async (context, input, res) => {
@@ -345,6 +348,8 @@ export const connector = async () => {
         if (input.attributes.statuses) {
             throw new ConnectorError(entitlementSelectionError, ConnectorErrorType.Generic)
         }
+
+        const ctx = new ContextHelper(config)
 
         const actions = [].concat(input.attributes.actions)
         let uniqueAccount: Account | undefined
@@ -393,17 +398,18 @@ export const connector = async () => {
 
         logger.info({ account })
         res.send(account)
+
+        ctx.logErrors(context, input)
     }
 
     const stdAccountUpdate: StdAccountUpdateHandler = async (context, input, res) => {
         opLog(config, input)
-
         logger.info(`Updating ${input.identity} account.`)
 
         if (config.reset) return
 
+        const ctx = new ContextHelper(config)
         const lazy = input.changes.findIndex((x) => x.value === 'report') === -1 ? true : false
-
         await ctx.init(input.schema, lazy)
 
         let account = await ctx.buildUniqueAccountFromID(input.identity)
@@ -469,7 +475,7 @@ export const connector = async () => {
                                             actions.push(change.value)
                                         } else {
                                             message = `Source ID ${change.value} is not a currently configured source.`
-                                            throw new ConnectorError(message, ConnectorErrorType.Generic)
+                                            ctx.handleError(message)
                                         }
                                         break
                                     case AttributeChangeOp.Remove:
@@ -514,15 +520,17 @@ export const connector = async () => {
 
         logger.info({ account })
         res.send(account)
+
+        ctx.logErrors(context, input)
     }
 
     const stdAccountEnable: StdAccountEnableHandler = async (context, input, res) => {
         opLog(config, input)
-
         logger.info(`Enabling ${input.identity} account.`)
 
         if (config.reset) return
 
+        const ctx = new ContextHelper(config)
         await ctx.init(input.schema, true)
 
         //Keepalive
@@ -543,15 +551,17 @@ export const connector = async () => {
         } finally {
             clearInterval(interval)
         }
+
+        ctx.logErrors(context, input)
     }
 
     const stdAccountDisable: StdAccountDisableHandler = async (context, input, res) => {
         opLog(config, input)
-
         logger.info(`Disabling ${input.identity} account.`)
 
         if (config.reset) return
 
+        const ctx = new ContextHelper(config)
         await ctx.init(input.schema, true)
 
         //Keepalive
@@ -572,6 +582,8 @@ export const connector = async () => {
         } finally {
             clearInterval(interval)
         }
+
+        ctx.logErrors(context, input)
     }
 
     const stdEntitlementList: StdEntitlementListHandler = async (context, input, res) => {
@@ -579,11 +591,11 @@ export const connector = async () => {
         const errors: string[] = []
         opLog(config, input)
 
-        try {
-            // await ctx.checkAccountCreateProvisioningPolicy()
+        const ctx = new ContextHelper(config)
+        await ctx.init(undefined, true)
 
+        try {
             let entitlements: StdEntitlementListOutput[]
-            await ctx.init(undefined, true)
             const sources = ctx.listSources()
             switch (input.type) {
                 case 'status':
@@ -616,11 +628,14 @@ export const connector = async () => {
         opLog(config, input)
         logger.info('Building dynamic schema.')
 
+        const ctx = new ContextHelper(config)
         await ctx.init(undefined, true)
         const schema = await ctx.getSchema()
 
         logger.info({ schema })
         res.send(schema)
+
+        ctx.logErrors(context, input)
     }
 
     return createConnector()

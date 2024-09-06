@@ -36,17 +36,8 @@ import {
     deleteArrayItem,
     stringifyIdentity,
     stringifyScore,
-    sleep,
 } from './utils'
-import {
-    EDIT_FORM_NAME,
-    IDENTITYNOTFOUNDRETRIES,
-    IDENTITYNOTFOUNDWAIT,
-    NONAGGREGABLE_TYPES,
-    UNIQUE_FORM_NAME,
-    WORKFLOW_NAME,
-    reservedAttributes,
-} from './constants'
+import { EDIT_FORM_NAME, NONAGGREGABLE_TYPES, UNIQUE_FORM_NAME, WORKFLOW_NAME, reservedAttributes } from './constants'
 import { EditForm, UniqueForm } from './model/form'
 import { buildUniqueID } from './utils/unique'
 import { ReviewEmail, ErrorEmail, ReportEmail } from './model/email'
@@ -399,17 +390,15 @@ export class ContextHelper {
 
     async checkSelectedSourcesAggregation() {
         if (this.config.forceAggregation) {
-            const latestFusionAggregation = await this.client.getLatestAccountAggregation(this.source!.id!)
+            const latestFusionAggregation = await this.client.getLatestAccountAggregation(this.source!.name!)
             if (latestFusionAggregation) {
                 const aggregations = []
                 const latestFusionAggregationDate = new Date(latestFusionAggregation.created!)
-                for (const source of this.sources) {
-                    const latestAggregation = await this.client.getLatestAccountAggregation(source.id!)
+                const aggregableSources = this.sources.filter((x) => !NONAGGREGABLE_TYPES.includes(x.type!))
+                for (const source of aggregableSources) {
+                    const latestAggregation = await this.client.getLatestAccountAggregation(source.name!)
                     const latestAggregationDate = new Date(latestAggregation ? latestAggregation.created! : 0)
-                    if (
-                        !NONAGGREGABLE_TYPES.includes(source.type!) &&
-                        latestFusionAggregationDate > latestAggregationDate
-                    ) {
+                    if (latestFusionAggregationDate > latestAggregationDate) {
                         aggregations.push(this.client.aggregateAccounts(source.id!))
                     }
                 }

@@ -88,7 +88,7 @@ export class SDKClient {
             query: {
                 query: '*',
             },
-            sort: ['name'],
+            sort: ['id'],
             includeNested: true,
             queryResultFilter: {
                 includes: attributes,
@@ -275,62 +275,6 @@ export class SDKClient {
 
         return response.data.length > 0 ? response.data[0] : undefined
     }
-
-    // async getIdenticalIdentities(sourceId: string, attributes: object): Promise<IdentityDocument[]> {
-    //     if (Object.keys(attributes).length > 0) {
-    //         const conditions: string[] = []
-    //         conditions.push(`@accounts(source.id:${sourceId})`)
-    //         // conditions.push(`NOT attributes.uid.exact:"${uid}"`)
-    //         for (const [key, value] of Object.entries(attributes) as [string, string][]) {
-    //             conditions.push(`attributes.${key}.exact:"${value}"`)
-    //         }
-    //         const query = conditions.join(' AND ')
-    //         const api = new SearchApi(this.config)
-    //         const search: Search = {
-    //             indices: ['identities'],
-    //             query: {
-    //                 query,
-    //             },
-    //             sort: ['-name'],
-    //             includeNested: false,
-    //         }
-
-    //         const response = await Paginator.paginateSearchApi(api, search, undefined, this.batchSize)
-    //         return response.data
-    //     } else {
-    //         return []
-    //     }
-    // }
-
-    // async getSimilarIdentities(sourceId: string, attributes: object): Promise<IdentityDocument[]> {
-    //     if (Object.keys(attributes).length > 0) {
-    //         const conditions: string[] = []
-    //         // conditions.push(`NOT attributes.uid.exact:"${uid}"`)
-    //         conditions.push(`@accounts(source.id:${sourceId})`)
-    //         for (const [key, value] of Object.entries(attributes) as [string, string][]) {
-    //             const subconditions: string[] = []
-    //             subconditions.push(`attributes.${key}.exact:/.*${value}.*/`)
-    //             subconditions.push(`attributes.${key}:"${value}"~1`)
-    //             const subquery = subconditions.join(' OR ')
-    //             conditions.push(subquery)
-    //         }
-    //         const query = conditions.map((x) => `(${x})`).join(' AND ')
-    //         const api = new SearchApi(this.config)
-    //         const search: Search = {
-    //             indices: ['identities'],
-    //             query: {
-    //                 query,
-    //             },
-    //             sort: ['-name'],
-    //             includeNested: false,
-    //         }
-
-    //         const response = await Paginator.paginateSearchApi(api, search, undefined, this.batchSize)
-    //         return response.data
-    //     } else {
-    //         return []
-    //     }
-    // }
 
     async listWorkgroups(): Promise<WorkgroupDtoBeta[]> {
         const api = new GovernanceGroupsBetaApi(this.config)

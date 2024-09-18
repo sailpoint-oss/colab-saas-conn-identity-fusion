@@ -62,7 +62,7 @@ export class ContextHelper {
     private schema?: AccountSchema
     private ids: string[]
     private identities: IdentityDocument[]
-    private currentIdentities: IdentityDocument[]
+    // private currentIdentities: IdentityDocument[]
     private accounts: Account[]
     private authoritativeAccounts: Account[]
     private uniqueForms: FormDefinitionResponseBeta[]
@@ -82,7 +82,7 @@ export class ContextHelper {
         this.ids = []
         this.uuids = []
         this.identities = []
-        this.currentIdentities = []
+        // this.currentIdentities = []
         this.accounts = []
         this.authoritativeAccounts = []
         this.uniqueForms = []
@@ -114,7 +114,7 @@ export class ContextHelper {
 
     releaseIdentityData() {
         this.identities = []
-        this.currentIdentities = []
+        // this.currentIdentities = []
     }
 
     releaseSourceData() {
@@ -156,7 +156,7 @@ export class ContextHelper {
         this.identities = []
         this.accounts = []
         this.authoritativeAccounts = []
-        this.currentIdentities = []
+        // this.currentIdentities = []
         this.uniqueForms = []
         this.uniqueFormInstances = []
         this.editForms = []
@@ -182,10 +182,10 @@ export class ContextHelper {
             promises.push(this.loadReviewersMap())
             await Promise.all(promises)
             this.mergingEnabled = this.config.merging_isEnabled
-            const identityIDs = this.accounts.map((x) => x.identityId)
+            // const identityIDs = this.accounts.map((x) => x.identityId)
             this.uuids = this.accounts.map((x) => x.attributes!.uuid).filter((x) => x !== undefined)
             this.authoritativeAccounts = await this.fetchAuthoritativeAccounts()
-            this.currentIdentities = this.identities.filter((x) => identityIDs.includes(x.id))
+            // this.currentIdentities = this.identities.filter((x) => identityIDs.includes(x.id))
 
             if (this.config.uid_scope === 'source') {
                 logger.info('Compiling current IDs for source scope.')
@@ -613,7 +613,7 @@ export class ContextHelper {
         const analysis = await Promise.all(pendingAccounts.map((x) => this.analyzeUncorrelatedAccount(x)))
 
         const email = new ReportEmail(analysis, this.config.merging_attributes, identity)
-        logger.info(lm(`Sending report to  ${identity.displayName}`, c, 1))
+        logger.info(lm(`Sending report to ${identity.displayName}`, c, 1))
         this.sendEmail(email)
     }
 
@@ -806,34 +806,6 @@ export class ContextHelper {
         await this.client.deleteForm(form.id!)
     }
 
-    // async listEditFormInstances(forms?: FormDefinitionResponseBeta[]): Promise<FormInstanceResponseBeta[]> {
-    //     let formInstances = await this.client.listFormInstances()
-    //     //Order from older to newer
-    //     formInstances = formInstances.sort((a, b) => new Date(a.modified!).valueOf() - new Date(b.modified!).valueOf())
-
-    //     if (forms) {
-    //         const formIDs = forms.map((x) => x.id)
-    //         const currentFormInstances = formInstances.filter((x) => formIDs.includes(x.formDefinitionId))
-    //         return currentFormInstances
-    //     } else {
-    //         return formInstances
-    //     }
-    // }
-
-    // async getUniqueFormInstances(forms?: FormDefinitionResponseBeta[]): Promise<FormInstanceResponseBeta[]> {
-    //     let formInstances = await this.client.listFormInstances()
-    //     //Order from older to newer
-    //     formInstances = formInstances.sort((a, b) => new Date(a.modified!).valueOf() - new Date(b.modified!).valueOf())
-
-    //     if (forms) {
-    //         const formIDs = forms.map((x) => x.id)
-    //         const currentFormInstances = formInstances.filter((x) => formIDs.includes(x.formDefinitionId))
-    //         return currentFormInstances
-    //     } else {
-    //         return formInstances
-    //     }
-    // }
-
     async deleteUniqueFormInstance(formInstance: FormInstanceResponseBeta) {
         const index = this.uniqueFormInstances.findIndex((x) => x.id === formInstance.id)
         if (index) {
@@ -881,14 +853,14 @@ export class ContextHelper {
         let match: IdentityDocument | undefined
         const accountAttributes = buildAccountAttributesObject(account, this.config.merging_map, true)
         const accountStringAttributes = JSON.stringify(accountAttributes)
-        const candidatesAttributes = this.currentIdentities.map((x) =>
+        const candidatesAttributes = this.identities.map((x) =>
             buildIdentityAttributesObject(x, this.config.merging_map)
         )
         const candidatesStringAttributes = candidatesAttributes.map((x) => JSON.stringify(x))
 
         const firstIndex = candidatesStringAttributes.indexOf(accountStringAttributes)
         if (firstIndex > -1) {
-            match = this.currentIdentities[firstIndex]
+            match = this.identities[firstIndex]
         }
 
         return match
@@ -899,7 +871,7 @@ export class ContextHelper {
         const accountAttributes = buildAccountAttributesObject(account, this.config.merging_map, true)
         const length = Object.keys(accountAttributes).length
 
-        candidates: for (const candidate of this.currentIdentities) {
+        candidates: for (const candidate of this.identities) {
             // const scores: number[] = []
             const scores = new Map<string, number>()
             attributes: for (const attribute of Object.keys(accountAttributes)) {

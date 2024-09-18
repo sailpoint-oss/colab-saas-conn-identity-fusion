@@ -90,6 +90,7 @@ export class ReportEmail implements TestWorkflowRequestBeta {
             '<th style="padding: 12px 15px;text-align: left;border-bottom: 1px solid #ddd;background-color: #4285f4; /* Blueish header color */color: white;">'
         )
         body = body.replace(/<td>/g, '<td style="padding: 12px 15px;text-align: left;border-bottom: 1px solid #ddd;">')
+
         this.input = {
             recipients: [recipient.attributes!.email],
             subject,

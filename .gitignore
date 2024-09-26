@@ -25,3 +25,5 @@ config.json
 
 /reports
 /exportedObjects
+# Sentry Config File
+.sentryclirc

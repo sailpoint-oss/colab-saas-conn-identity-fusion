@@ -1,4 +1,6 @@
+import axios from 'axios'
 import axiosRetry from 'axios-retry'
+import axiosThrottle from 'axios-request-throttle'
 import {
     Configuration,
     CreateFormDefinitionRequestBeta,
@@ -47,12 +49,20 @@ import {
 } from 'sailpoint-api-client'
 import { URL } from 'url'
 import { logger } from '@sailpoint/connector-sdk'
-import { TASKRESULTRETRIES, TASKRESULTWAIT } from './constants'
+import { REQUESTSPERSECOND, TASKRESULTRETRIES, TASKRESULTWAIT } from './constants'
+import { AxiosError, AxiosResponseHeaders } from 'axios'
 
 const TOKEN_URL_PATH = '/oauth/token'
 
-function sleep(ms: number) {
+const sleep = (ms: number) => {
     return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+const retryDelay = (retryCount: number, error: AxiosError): number => {
+    const headers = error.response!.headers as AxiosResponseHeaders
+    const retryAfter = headers.get('retry-after') as number
+
+    return retryAfter ? retryAfter : 10 * 1000
 }
 
 export class SDKClient {
@@ -63,8 +73,7 @@ export class SDKClient {
         this.config = new Configuration({ ...config, tokenUrl })
         this.config.retriesConfig = {
             retries: 5,
-            // retryDelay: (retryCount) => { return retryCount * 2000; },
-            retryDelay: (retryCount, error) => axiosRetry.exponentialDelay(retryCount, error, 2000),
+            retryDelay,
             retryCondition: (error) => {
                 return (
                     axiosRetry.isNetworkError(error) ||
@@ -79,6 +88,7 @@ export class SDKClient {
                 logger.error(error)
             },
         }
+        axiosThrottle.use(axios, { requestsPerSecond: REQUESTSPERSECOND })
     }
 
     async listIdentities(attributes: string[]): Promise<IdentityDocument[]> {
@@ -347,14 +357,14 @@ export class SDKClient {
 
     async correlateAccount(identityId: string, id: string): Promise<object> {
         const api = new AccountsApi(this.config)
-        const jsonPatchOperation: JsonPatchOperation[] = [
+        const requestBody: JsonPatchOperation[] = [
             {
                 op: 'replace',
                 path: '/identityId',
                 value: identityId,
             },
         ]
-        const response = await api.updateAccount({ id, jsonPatchOperation })
+        const response = await api.updateAccount({ id, requestBody })
 
         return response.data
     }
@@ -480,7 +490,7 @@ export class SDKClient {
     ): Promise<string | undefined> {
         const api = new IdentityProfilesBetaApi(this.config)
 
-        const response = await api.generateIdentityPreview({
+        const response = await api.showGenerateIdentityPreview({
             identityPreviewRequestBeta: { identityId, identityAttributeConfig },
         })
         const attributes = response.data.previewAttributes

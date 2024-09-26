@@ -6,9 +6,10 @@ export const TASKRESULTWAIT = 1000
 export const PROCESSINGWAIT = 60 * 1000
 export const IDENTITYNOTFOUNDRETRIES = 5
 export const TASKRESULTRETRIES = 5
+export const REQUESTSPERSECOND = 10
 export const SEPARATOR = ' | '
-export const UNIQUE_FORM_NAME = 'Identity Merging'
-export const EDIT_FORM_NAME = 'Fusion account edit form'
+export const UNIQUEFORMNAME = 'Identity Merging'
+export const EDITFORMNAME = 'Fusion account edit form'
 export const reservedAttributes = [
     'id',
     'uniqueID',

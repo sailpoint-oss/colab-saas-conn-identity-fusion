@@ -37,7 +37,7 @@ import {
     stringifyIdentity,
     stringifyScore,
 } from './utils'
-import { EDIT_FORM_NAME, NONAGGREGABLE_TYPES, UNIQUE_FORM_NAME, WORKFLOW_NAME, reservedAttributes } from './constants'
+import { EDITFORMNAME, NONAGGREGABLE_TYPES, UNIQUEFORMNAME, WORKFLOW_NAME, reservedAttributes } from './constants'
 import { EditForm, UniqueForm } from './model/form'
 import { buildUniqueID } from './utils/unique'
 import { ReviewEmail, ErrorEmail, ReportEmail } from './model/email'
@@ -139,6 +139,8 @@ export class ContextHelper {
         logger.debug(lm(`Looking for connector instance`, this.c))
         if (schema) {
             this.loadSchema(schema)
+        } else {
+            await this.getSchema()
         }
         const id = this.config!.spConnectorInstanceId as string
         const allSources = await this.client.listSources()
@@ -701,9 +703,9 @@ export class ContextHelper {
     getUniqueFormName(account?: Account, sourceName?: string): string {
         let name: string
         if (account) {
-            name = `${UNIQUE_FORM_NAME} (${sourceName}) - ${account.name} (${account.nativeIdentity})`
+            name = `${UNIQUEFORMNAME} (${sourceName}) - ${account.name} (${account.nativeIdentity})`
         } else {
-            name = `${UNIQUE_FORM_NAME}`
+            name = `${UNIQUEFORMNAME}`
         }
         return name
     }
@@ -711,9 +713,9 @@ export class ContextHelper {
     getEditFormName(accountName?: string): string {
         let name: string
         if (accountName) {
-            name = `${EDIT_FORM_NAME} for ${accountName}`
+            name = `${EDITFORMNAME} for ${accountName}`
         } else {
-            name = `${EDIT_FORM_NAME}`
+            name = `${EDITFORMNAME}`
         }
         return name
     }
@@ -1034,6 +1036,7 @@ export class ContextHelper {
             schema = this.schema
         } else {
             schema = await this.buildDynamicSchema()
+            this.schema = schema
         }
 
         return schema

@@ -62,6 +62,7 @@ export class ContextHelper {
     private schema?: AccountSchema
     private ids: string[]
     private identities: IdentityDocument[]
+    private identitiesById: Map<string, IdentityDocument>
     // private currentIdentities: IdentityDocument[]
     private accounts: Account[]
     private authoritativeAccounts: Account[]
@@ -75,6 +76,7 @@ export class ContextHelper {
     private baseUrl: string
     private initiated: string | undefined
     private mergingEnabled: boolean = false
+    private candidatesStringAttributes: string[] = []
 
     constructor(config: Config) {
         this.config = config
@@ -82,6 +84,7 @@ export class ContextHelper {
         this.ids = []
         this.uuids = []
         this.identities = []
+        this.identitiesById = new Map<string, IdentityDocument>()
         // this.currentIdentities = []
         this.accounts = []
         this.authoritativeAccounts = []
@@ -114,6 +117,7 @@ export class ContextHelper {
 
     releaseIdentityData() {
         this.identities = []
+        this.identitiesById = new Map()
         // this.currentIdentities = []
     }
 
@@ -156,6 +160,7 @@ export class ContextHelper {
         this.emailer = await this.getEmailWorkflow(wfName, owner)
 
         this.identities = []
+        this.identitiesById = new Map()
         this.accounts = []
         this.authoritativeAccounts = []
         // this.currentIdentities = []
@@ -168,17 +173,8 @@ export class ContextHelper {
 
         if (!lazy) {
             const promises = []
-            promises.push(
-                this.listIdentities().then((identities) => {
-                    this.identities = identities
-                })
-            )
-
-            promises.push(
-                this.listAccounts().then((accounts) => {
-                    this.accounts = accounts
-                })
-            )
+            promises.push(this.fetchIdentities())
+            promises.push(this.fetchAccounts())
 
             promises.push(this.loadForms())
             promises.push(this.loadReviewersMap())
@@ -188,14 +184,6 @@ export class ContextHelper {
             this.uuids = this.accounts.map((x) => x.attributes!.uuid).filter((x) => x !== undefined)
             this.authoritativeAccounts = await this.fetchAuthoritativeAccounts()
             // this.currentIdentities = this.identities.filter((x) => identityIDs.includes(x.id))
-
-            if (this.config.uid_scope === 'source') {
-                logger.info('Compiling current IDs for source scope.')
-                this.ids = this.accounts.map((x) => x.attributes!.uniqueID)
-            } else {
-                logger.info('Compiling current IDs for tenant scope.')
-                this.ids = this.identities.map((x) => x.attributes!.uid)
-            }
 
             this.initiated = 'full'
         }
@@ -245,8 +233,8 @@ export class ContextHelper {
         return this.accounts.length === 0
     }
 
-    private async listIdentities(): Promise<IdentityDocument[]> {
-        const c = 'listIdentities'
+    private async fetchIdentities(): Promise<void> {
+        const c = 'fetchIdentities'
         logger.info(lm('Fetching identities.', c))
         const attributes = new Set([
             'id',
@@ -257,15 +245,18 @@ export class ContextHelper {
         ])
         this.config.merging_map.map((x) => `attributes.${x.identity}`).forEach((x) => attributes.add(x))
         this.config.merging_attributes.map((x) => `attributes.${x}`).forEach((x) => attributes.add(x))
-        const identities = await this.client.listIdentities([...attributes])
 
-        return identities ? identities : []
+        this.identities = await this.client.listIdentities([...attributes])
+        this.identities.forEach((x) => {
+            this.identitiesById.set(x.id, x)
+            if (this.config.uid_scope === 'platform') this.ids.push(x.attributes!.uid)
+        })
     }
 
     async getIdentityById(id: string): Promise<IdentityDocument | undefined> {
         let identity: IdentityDocument | undefined
         if (this.initiated === 'full') {
-            identity = this.identities.find((x) => x.id === id)
+            identity = this.identitiesById.get(id)
         } else {
             identity = await this.client.getIdentityBySearch(id)
         }
@@ -283,26 +274,31 @@ export class ContextHelper {
         }
     }
 
-    private async listAccounts(): Promise<Account[]> {
-        const c = 'listAccounts'
+    private async fetchAccounts(): Promise<void> {
+        const c = 'fetchAccounts'
 
         logger.info(lm('Fetching existing accounts.', c))
-        let accounts = await this.client.listAccountsBySource(this.source!.id!)
-        accounts = accounts || []
+        const accounts = await this.client.listAccountsBySource(this.source!.id!)
 
         for (const account of accounts) {
-            account.attributes!.accounts = account.attributes!.accounts || []
-            account.attributes!.statuses = account.attributes!.statuses || []
-            account.attributes!.actions = account.attributes!.actions || []
-            account.attributes!.reviews = account.attributes!.reviews || []
-            account.attributes!.history = account.attributes!.history || []
-        }
+            if (
+                !(
+                    this.config.deleteEmpty &&
+                    account.attributes!.statuses &&
+                    account.attributes!.statuses.includes('orphan')
+                )
+            ) {
+                account.attributes!.accounts = account.attributes!.accounts || []
+                account.attributes!.statuses = account.attributes!.statuses || []
+                account.attributes!.actions = account.attributes!.actions || []
+                account.attributes!.reviews = account.attributes!.reviews || []
+                account.attributes!.history = account.attributes!.history || []
 
-        if (this.config.deleteEmpty) {
-            accounts = accounts.filter((x) => !x.attributes!.statuses.includes('orphan'))
-        }
+                if (this.config.uid_scope === 'source') this.ids.push(account.attributes!.uniqueID)
 
-        return accounts
+                this.accounts.push(account)
+            }
+        }
     }
 
     listProcessedAccountIDs(): string[] {
@@ -380,9 +376,7 @@ export class ContextHelper {
     private async getAccountIdentity(account: Account): Promise<IdentityDocument | undefined> {
         let identity: IdentityDocument | undefined
         if (this.initiated === 'full') {
-            const index = this.identities.findIndex((x) => x.id === account.identityId)
-            identity = this.identities[index]
-            // this.identities = this.identities.splice(index, 1)
+            identity = this.identitiesById.get(account.identityId!)
         } else {
             identity = await this.client.getIdentityBySearch(account.identityId!)
         }
@@ -631,8 +625,8 @@ export class ContextHelper {
             uniqueID = await buildUniqueID(account, this.ids, this.config, true)
         } else {
             logger.debug(lm(`Taking identity uid as unique ID`, c, 1))
-            const identity = this.identities.find((x) => x.id === account.identityId) as IdentityDocument
-            uniqueID = identity?.attributes!.uid
+            const identity = this.identitiesById.get(account.identityId!)!
+            uniqueID = identity.attributes!.uid
         }
 
         this.setUUID(account)
@@ -683,12 +677,10 @@ export class ContextHelper {
         const account = await this.client.getAccountBySourceAndNativeIdentity(this.source!.id!, id)
         if (this.config.uid_scope === 'source') {
             logger.info('Compiling current IDs for source scope.')
-            this.accounts = await this.listAccounts()
-            this.ids = this.accounts.map((x) => x.attributes!.uniqueID)
+            await this.fetchAccounts()
         } else {
             logger.info('Compiling current IDs for tenant scope.')
-            this.identities = await this.listIdentities()
-            this.ids = this.identities.map((x) => x.attributes!.uid)
+            await this.fetchIdentities()
         }
 
         const uniqueID = await buildUniqueID(account!, this.ids, this.config, false)
@@ -851,16 +843,19 @@ export class ContextHelper {
         return this.mergingEnabled
     }
 
+    buildCandidatesAttributes() {
+        const candidatesAttributes = this.identities.map((x) =>
+            buildIdentityAttributesObject(x, this.config.merging_map)
+        )
+        this.candidatesStringAttributes = candidatesAttributes.map((x) => JSON.stringify(x))
+    }
+
     private findIdenticalMatch(account: Account): IdentityDocument | undefined {
         let match: IdentityDocument | undefined
         const accountAttributes = buildAccountAttributesObject(account, this.config.merging_map, true)
         const accountStringAttributes = JSON.stringify(accountAttributes)
-        const candidatesAttributes = this.identities.map((x) =>
-            buildIdentityAttributesObject(x, this.config.merging_map)
-        )
-        const candidatesStringAttributes = candidatesAttributes.map((x) => JSON.stringify(x))
 
-        const firstIndex = candidatesStringAttributes.indexOf(accountStringAttributes)
+        const firstIndex = this.candidatesStringAttributes.indexOf(accountStringAttributes)
         if (firstIndex > -1) {
             match = this.identities[firstIndex]
         }
@@ -1046,16 +1041,6 @@ export class ContextHelper {
         return this.emailer!
     }
 
-    async fetchUniqueIDs() {
-        if (this.config.uid_scope === 'source') {
-            logger.info('Compiling current IDs for source scope.')
-            this.ids = this.accounts.map((x) => x.attributes!.uniqueID)
-        } else {
-            logger.info('Compiling current IDs for tenant scope.')
-            this.ids = this.identities.map((x) => x.attributes!.uid)
-        }
-    }
-
     private async getEmailWorkflow(name: string, owner: OwnerDto): Promise<WorkflowBeta | undefined> {
         const c = 'getEmailWorkflow'
         logger.debug(lm('Fetching workflows', c, 1))
@@ -1109,36 +1094,6 @@ export class ContextHelper {
 
         return reviewersMap
     }
-
-    // private async fetchReviewerIDs(source: Source): Promise<string[]> {
-    //     const c = 'fetchReviewerIDs'
-    //     logger.debug(lm(`Fetching reviewers for ${source.name}`, c, 1))
-    //     let reviewers: string[] = []
-
-    //     if (source.managementWorkgroup) {
-    //         logger.debug(lm(`Reviewer is ${source.managementWorkgroup.name} workgroup`, c, 1))
-    //         const workgroups = await this.client.listWorkgroups()
-    //         const workgroup = workgroups.find((x) => x.id === source.managementWorkgroup!.id)
-    //         if (workgroup) {
-    //             logger.debug(lm('Workgroup found', c, 1))
-    //             const members = await this.client.listWorkgroupMembers(workgroup.id!)
-    //             reviewers = members.map((x) => x.id!)
-    //         }
-    //     } else if (source.owner || reviewers.length === 0) {
-    //         logger.debug(lm('Reviewer is the owner', c, 1))
-    //         const reviewerIdentity = await this.client.getIdentity(source.owner.id!)
-    //         if (reviewerIdentity) {
-    //             logger.debug(lm('Reviewer found', c, 1))
-    //             reviewers.push(reviewerIdentity.id!)
-    //         } else {
-    //             logger.error(lm(`Reviewer not found ${source.owner.name}`, c, 1))
-    //         }
-    //     } else {
-    //         logger.warn(lm(`No reviewer provided. Merging forms will not be processed.`, c, 1))
-    //     }
-
-    //     return reviewers
-    // }
 
     async processUniqueFormInstance(
         formInstance: FormInstanceResponseBeta

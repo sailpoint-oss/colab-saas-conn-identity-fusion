@@ -1,39 +1,26 @@
 @url = http://localhost:3000
-@baseurl = xxx
-
-@clientId = xxx
-@clientSecret = xxx
-
-
-### std:test-connection
+###
+# Test connection
 POST {{url}}
 Content-Type: application/json
 
 {
   "type": "std:test-connection",
   "input": {},
-  "config": {
-        "patId": "{{clientId}}",
-        "patSecret": "{{clientSecret}}",
-        "idnUrl": "{{baseurl}}"
-    }
+  "config": {{config}}
 }
-
-### std:account:list
+###
+# Account list
 POST {{url}}
 Content-Type: application/json
 
 {
   "type": "std:account:list",
   "input": {},
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}"
-    }
+  "config": {{config}}
 }
-
-### std:account:read
+###
+# Account read
 POST {{url}}
 Content-Type: application/json
 
@@ -42,14 +29,10 @@ Content-Type: application/json
   "input": {
     "identity": "3175644"
   },
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}"
-    }
+  "config": {{config}}
 }
-
-### std:entitlement:list
+###
+# Entitlement list
 POST {{url}}
 Content-Type: application/json
 
@@ -58,15 +41,10 @@ Content-Type: application/json
   "input": {
         "type": "group"
     },
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}",
-        "includePermissions": false
-    }
+  "config": {{config}}
 }
-
-### std:entitlement:read
+###
+# Entitlement read
 POST {{url}}
 Content-Type: application/json
 
@@ -75,15 +53,10 @@ Content-Type: application/json
   "input": {
         "identity": "fc16aee3-0359-4d46-b746-b36459211660"
     },
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}",
-        "includePermissions": false
-    }
+  "config": {{config}}
 }
-
-### std:account:disable
+###
+# Account disable
 POST {{url}}
 Content-Type: application/json
 
@@ -93,14 +66,10 @@ Content-Type: application/json
     "identity": "993",
     "key": { "simple": { "id": "993" } }
   },
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}"
-    }
+"config": {{config}}
 }
-
-### std:account:enable
+###
+# Account enable
 POST {{url}}
 Content-Type: application/json
 
@@ -109,38 +78,25 @@ Content-Type: application/json
   "input": {
     "identity": "993"
   },
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}"
-    }
+  "config": {{config}}
 }
-
-### std:account:update
+###
+# Account update
 POST {{url}}
 Content-Type: application/json
 
 {
   "type": "std:account:update",
   "input": {"changes":[{"attribute":"groups","op":"Remove","value":"fc16aee3-0359-4d46-b746-b36459211660"}],"identity":"3175644","key":{"simple":{"id":"3175644"}}},
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}"
-    }
+  "config": {{config}}
 }
-
-### std:account:create
+###
+# Account create
 POST {{url}}
 Content-Type: application/json
 
 {
   "type": "std:account:create",
-  "input": {"attributes":{"groups":"fc16aee3-0359-4d46-b746-b36459211660","name":"cristian.grau"},"identity":null,"key":{"simple":{"id":null}}},
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}"
-    }
+  "input": {"attributes":{"groups":"fc16aee3-0359-4d46-b746-b36459211660","name":"amanda.ross"},"identity":null,"key":{"simple":{"id":null}}},
+  "config": {{config}}
 }
-

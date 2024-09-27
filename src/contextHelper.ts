@@ -319,15 +319,11 @@ export class ContextHelper {
     }
 
     async getAccountByIdentity(identity: IdentityDocument): Promise<Account | undefined> {
-        let account = this.accounts.find((x) => x.identityId === identity.id)
-        if (!account) {
-            account = await this.client.getAccountByIdentityID(
-                identity.id,
-                identity.attributes!.cloudAuthoritativeSource
-            )
-        }
+        return await this.client.getAccountByIdentityID(identity.id, identity.attributes!.cloudAuthoritativeSource)
+    }
 
-        return account
+    getFusionAccountByIdentity(identity: IdentityDocument): Account | undefined {
+        return this.accounts.find((x) => x.identityId === identity.id)
     }
 
     getIdentityAccount(identity: IdentityDocument): Account | undefined {
@@ -422,6 +418,10 @@ export class ContextHelper {
         }
 
         return sourceAccounts
+    }
+
+    async correlateAccount(identityId: string, accountId: string): Promise<void> {
+        await this.client.correlateAccount(identityId, accountId)
     }
 
     async refreshUniqueAccount(account: Account): Promise<UniqueAccount> {

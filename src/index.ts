@@ -100,14 +100,20 @@ export const connector = async () => {
 
                                 if (identityMatch) {
                                     logger.debug(`Updating existing account for ${decision}.`)
-                                    uniqueAccount = (await ctx.getAccountByIdentity(identityMatch)) as Account
                                     const uncorrelatedAccount = (await ctx.getAccount(accountID)) as Account
-                                    const msg = datedMessage(message, uncorrelatedAccount)
-                                    const attributes = uniqueAccount.attributes!
-                                    attributes.accounts.push(account)
-                                    attributes.history.push(msg)
-                                    attributes.statuses.push('manual')
-                                    deleteArrayItem(attributes.statuses, 'edited')
+                                    const currentAccount = ctx.getFusionAccountByIdentity(identityMatch)
+                                    if (currentAccount) {
+                                        const msg = datedMessage(message, uncorrelatedAccount)
+                                        const attributes = currentAccount.attributes!
+                                        attributes.accounts.push(account)
+                                        attributes.history.push(msg)
+                                        attributes.statuses.push('manual')
+                                        deleteArrayItem(attributes!.statuses, 'edited')
+                                    } else {
+                                        const msg = `Correlating ${uncorrelatedAccount.name} account to non-Fusion identity ${identityMatch.displayName}`
+                                        logger.info(msg)
+                                        await ctx.correlateAccount(identityMatch.id, uncorrelatedAccount.id!)
+                                    }
                                 } else {
                                     logger.debug(`Creating new unique account.`)
                                     const pendingAccount = pendingAccounts.find((x) => x.id === account) as Account

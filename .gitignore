@@ -27,3 +27,4 @@ config.json
 /exportedObjects
 # Sentry Config File
 .sentryclirc
+.httpyac.json

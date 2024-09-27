@@ -172,17 +172,15 @@ export class ContextHelper {
         this.initiated = 'lazy'
 
         if (!lazy) {
+            this.mergingEnabled = this.config.merging_isEnabled
             const promises = []
             promises.push(this.fetchIdentities())
             promises.push(this.fetchAccounts())
-
+            promises.push(this.fetchAuthoritativeAccounts())
             promises.push(this.loadForms())
             promises.push(this.loadReviewersMap())
             await Promise.all(promises)
-            this.mergingEnabled = this.config.merging_isEnabled
-            // const identityIDs = this.accounts.map((x) => x.identityId)
-            this.uuids = this.accounts.map((x) => x.attributes!.uuid).filter((x) => x !== undefined)
-            this.authoritativeAccounts = await this.fetchAuthoritativeAccounts()
+
             // this.currentIdentities = this.identities.filter((x) => identityIDs.includes(x.id))
 
             this.initiated = 'full'
@@ -294,6 +292,7 @@ export class ContextHelper {
                 account.attributes!.reviews = account.attributes!.reviews || []
                 account.attributes!.history = account.attributes!.history || []
 
+                if (account.attributes!.uuid) this.uuids.push(account.attributes!.uuid)
                 if (this.config.uid_scope === 'source') this.ids.push(account.attributes!.uniqueID)
 
                 this.accounts.push(account)
@@ -343,13 +342,11 @@ export class ContextHelper {
         return this.authoritativeAccounts
     }
 
-    private async fetchAuthoritativeAccounts(): Promise<Account[]> {
+    private async fetchAuthoritativeAccounts(): Promise<void> {
         const c = 'fetchAuthoritativeAccounts'
 
         logger.info(lm('Fetching authoritative accounts.', c))
-        const authoritativeAccounts = await this.client.listAccounts(this.sources.map((x) => x.id!))
-
-        return authoritativeAccounts
+        this.authoritativeAccounts = await this.client.listAccounts(this.sources.map((x) => x.id!))
     }
 
     setUUID(account: Account) {
@@ -1212,13 +1209,6 @@ export class ContextHelper {
             {
                 name: 'IIQDisabled',
                 description: 'Disabled',
-                type: 'string',
-                multi: false,
-                entitlement: false,
-            },
-            {
-                name: 'enabled',
-                description: 'Enabled',
                 type: 'string',
                 multi: false,
                 entitlement: false,

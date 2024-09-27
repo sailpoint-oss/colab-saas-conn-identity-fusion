@@ -12,7 +12,6 @@ export class UniqueAccount implements StdAccountListOutput {
         this.disabled = account.uncorrelated
         this.attributes = account.attributes!
         this.attributes.IIQDisabled = this.disabled
-        this.attributes.enabled = !this.disabled
 
         const accountsCount = account.attributes!.accounts.length
         const statuses = this.attributes.statuses as string[]

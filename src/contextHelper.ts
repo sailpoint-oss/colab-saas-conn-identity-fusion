@@ -60,7 +60,7 @@ export class ContextHelper {
     private reviewerIDs: Map<string, string[]>
     private source?: Source
     private schema?: AccountSchema
-    private ids: string[]
+    private ids: Set<string>
     private identities: IdentityDocument[]
     private identitiesById: Map<string, IdentityDocument>
     // private currentIdentities: IdentityDocument[]
@@ -72,7 +72,7 @@ export class ContextHelper {
     private editFormInstances: FormInstanceResponseBeta[]
     private forms: FormDefinitionResponseBeta[]
     private errors: string[]
-    private uuids: string[]
+    private uuids: Set<string>
     private baseUrl: string
     private initiated: string | undefined
     private mergingEnabled: boolean = false
@@ -81,8 +81,8 @@ export class ContextHelper {
     constructor(config: Config) {
         this.config = config
         this.sources = []
-        this.ids = []
-        this.uuids = []
+        this.ids = new Set()
+        this.uuids = new Set()
         this.identities = []
         this.identitiesById = new Map<string, IdentityDocument>()
         // this.currentIdentities = []
@@ -99,7 +99,7 @@ export class ContextHelper {
         logger.debug(lm(`Initializing SDK client.`, this.c))
         this.client = new SDKClient(this.config)
 
-        this.config!.merging_map = this.config?.merging_map || []
+        this.config!.merging_map ??= []
         this.config.getScore = (attribute?: string): number => {
             let score
             if (this.config.global_merging_score) {
@@ -247,7 +247,7 @@ export class ContextHelper {
         this.identities = await this.client.listIdentities([...attributes])
         this.identities.forEach((x) => {
             this.identitiesById.set(x.id, x)
-            if (this.config.uid_scope === 'platform') this.ids.push(x.attributes!.uid)
+            if (this.config.uid_scope === 'platform') this.ids.add(x.attributes!.uid)
         })
     }
 
@@ -286,14 +286,14 @@ export class ContextHelper {
                     account.attributes!.statuses.includes('orphan')
                 )
             ) {
-                account.attributes!.accounts = account.attributes!.accounts || []
-                account.attributes!.statuses = account.attributes!.statuses || []
-                account.attributes!.actions = account.attributes!.actions || []
-                account.attributes!.reviews = account.attributes!.reviews || []
-                account.attributes!.history = account.attributes!.history || []
+                account.attributes!.accounts ??= []
+                account.attributes!.statuses ??= []
+                account.attributes!.actions ??= []
+                account.attributes!.reviews ??= []
+                account.attributes!.history ??= []
 
-                if (account.attributes!.uuid) this.uuids.push(account.attributes!.uuid)
-                if (this.config.uid_scope === 'source') this.ids.push(account.attributes!.uniqueID)
+                if (account.attributes!.uuid) this.uuids.add(account.attributes!.uuid)
+                if (this.config.uid_scope === 'source') this.ids.add(account.attributes!.uniqueID)
 
                 this.accounts.push(account)
             }
@@ -348,8 +348,8 @@ export class ContextHelper {
     setUUID(account: Account) {
         while (!account.attributes!.uuid) {
             const uuid = uuidv4()
-            if (!this.uuids.includes(uuid)) {
-                this.uuids.push(uuid)
+            if (!this.uuids.has(uuid)) {
+                this.uuids.add(uuid)
                 account.attributes!.uuid = uuid
             }
         }
@@ -441,12 +441,15 @@ export class ContextHelper {
             let accountIds: string[] = []
             if (identity) {
                 const accounts = identity.accounts!
-                const originalAccountIds = [...account.attributes!.accounts]
+                const originalAccountIdsStr = account.attributes!.accounts.sort().toString()
                 accountIds = accounts.filter((x) => this.config.sources.includes(x.source!.name!)).map((x) => x.id!)
+                const accountIdsStr = accountIds.sort().toString()
 
                 if (
-                    !originalAccountIds.every((item) => accountIds.includes(item)) ||
-                    !accountIds.every((item) => originalAccountIds.includes(item))
+                    accountIdsStr.indexOf(originalAccountIdsStr) === -1 ||
+                    originalAccountIdsStr.indexOf(accountIdsStr) === -1
+                    // !originalAccountIds.every((item) => accountIds.includes(item)) ||
+                    // !accountIds.every((item) => originalAccountIds.includes(item))
                 ) {
                     // sourceAccountsChanged = true
                     needsRefresh = true
@@ -640,7 +643,7 @@ export class ContextHelper {
             uniqueAccount.attributes!.history = [message]
         }
 
-        this.ids.push(uniqueAccount.attributes!.uniqueID)
+        this.ids.add(uniqueAccount.attributes!.uniqueID)
         this.accounts.push(uniqueAccount)
 
         return uniqueAccount
@@ -659,9 +662,9 @@ export class ContextHelper {
         const account = await this.getFusionAccount(id)
 
         if (account) {
-            account.attributes!.accounts = account.attributes!.accounts || []
-            account.attributes!.actions = account.attributes!.actions || []
-            account.attributes!.reviews = account.attributes!.reviews || []
+            account.attributes!.accounts ??= []
+            account.attributes!.actions ??= []
+            account.attributes!.reviews ??= []
             account.modified = new Date(0).toISOString()
             const uniqueAccount = await this.refreshUniqueAccount(account)
             return uniqueAccount
@@ -962,15 +965,27 @@ export class ContextHelper {
 
             if (identicalMatch) {
                 logger.debug(lm(`Identical match found.`, c, 1))
-                uniqueAccount = this.accounts.find((x) => x.identityId === identicalMatch.id) as Account
-                uniqueAccount.modified = new Date(0).toISOString()
-                message = datedMessage('Identical match found.', uncorrelatedAccount)
-                status = 'auto'
-                const attributes = uniqueAccount.attributes!
-                attributes.statuses.push(status)
-                attributes.accounts.push(uncorrelatedAccount.id)
-                attributes.history.push(message)
-                deleteArrayItem(attributes.statuses, 'edited')
+                const currentAccount = this.getFusionAccountByIdentity(identicalMatch)
+                if (currentAccount) {
+                    uniqueAccount = currentAccount
+                    uniqueAccount = this.accounts.find((x) => x.identityId === identicalMatch.id) as Account
+                    uniqueAccount.modified = new Date(0).toISOString()
+                    message = datedMessage('Identical match found.', uncorrelatedAccount)
+                    status = 'auto'
+                    const attributes = uniqueAccount.attributes!
+                    attributes.statuses.push(status)
+                    attributes.accounts.push(uncorrelatedAccount.id)
+                    attributes.history.push(message)
+                    deleteArrayItem(attributes.statuses, 'edited')
+                } else {
+                    const msg = lm(
+                        `Correlating ${uncorrelatedAccount.name} account to non-Fusion identity ${identicalMatch.displayName}`,
+                        c,
+                        1
+                    )
+                    logger.info(msg)
+                    await this.correlateAccount(identicalMatch.id, uncorrelatedAccount.id!)
+                }
                 // Check if similar match exists
             } else {
                 if (similarMatches.length > 0) {
@@ -1028,7 +1043,7 @@ export class ContextHelper {
             schema = this.schema
         } else {
             schema = await this.buildDynamicSchema()
-            this.schema = schema
+            this.loadSchema(schema)
         }
 
         return schema

@@ -7,7 +7,7 @@ import { Config } from '../model/config'
 
 export const buildUniqueID = async (
     account: Account,
-    currentIDs: string[],
+    currentIDs: Set<string>,
     config: Config,
     buildContext: boolean
 ): Promise<string> => {
@@ -65,7 +65,7 @@ export const buildUniqueID = async (
                 break
         }
 
-        if (currentIDs.includes(id!)) {
+        if (currentIDs.has(id!)) {
             counter++
             logger.debug(`Duplicate ID found for ${id}`)
         } else {

@@ -198,10 +198,11 @@ export const connector = async () => {
 
             //PROCESS UNCORRELATED ACCOUNTS
             logger.info('Processing uncorrelated accounts.')
+            const reviewerIDs = ctx.listAllReviewerIDs()
             for (const uncorrelatedAccount of pendingAccounts) {
                 try {
                     const uniqueForm = await ctx.processUncorrelatedAccount(uncorrelatedAccount)
-                    if (uniqueForm) {
+                    if (uniqueForm && reviewerIDs.length > 0) {
                         logger.debug(`Creating merging form`)
                         const form = await ctx.createUniqueForm(uniqueForm)
                     }
@@ -241,15 +242,13 @@ export const connector = async () => {
 
                 //PROCESS REVIEWERS
                 logger.info('Processing reviewers.')
-                const reviewerIDs = ctx.listAllReviewerIDs()
-
                 for (const reviewerID of reviewerIDs) {
                     try {
                         const reviewer = (await ctx.getIdentityById(reviewerID)) as IdentityDocument
                         const reviewerAccount = ctx.getIdentityAccount(reviewer)!
                         reviewerAccount.attributes!.reviews = []
                         for (const instance of ctx.listUniqueFormInstancesByReviewerID(reviewerID)) {
-                            const form = ctx.getFormByID(instance.formDefinitionId!)
+                            const form = ctx.getUniqueFormByID(instance.formDefinitionId!)
                             if (form) {
                                 const review = buildReviewFromFormInstance(instance)
                                 reviewerAccount.attributes!.reviews.push(review)
@@ -311,7 +310,7 @@ export const connector = async () => {
             }
             console.timeLog('stdAccountList', 'process edit forms')
 
-            ctx.releaseFormData()
+            // ctx.releaseFormData()
             ctx.releaseEditFormData()
 
             //BUILD RESULTING ACCOUNTS

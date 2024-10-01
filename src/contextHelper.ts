@@ -61,7 +61,7 @@ export class ContextHelper {
     private source?: Source
     private schema?: AccountSchema
     private ids: Set<string>
-    private identities: IdentityDocument[]
+    // private identities: IdentityDocument[]
     private identitiesById: Map<string, IdentityDocument>
     // private currentIdentities: IdentityDocument[]
     private accounts: Account[]
@@ -70,7 +70,7 @@ export class ContextHelper {
     private uniqueFormInstances: FormInstanceResponseBeta[]
     private editForms: FormDefinitionResponseBeta[]
     private editFormInstances: FormInstanceResponseBeta[]
-    private forms: FormDefinitionResponseBeta[]
+    // private forms: FormDefinitionResponseBeta[]
     private errors: string[]
     private uuids: Set<string>
     private baseUrl: string
@@ -83,7 +83,7 @@ export class ContextHelper {
         this.sources = []
         this.ids = new Set()
         this.uuids = new Set()
-        this.identities = []
+        // this.identities = []
         this.identitiesById = new Map<string, IdentityDocument>()
         // this.currentIdentities = []
         this.accounts = []
@@ -91,7 +91,7 @@ export class ContextHelper {
         this.uniqueForms = []
         this.uniqueFormInstances = []
         this.editForms = []
-        this.forms = []
+        // this.forms = []
         this.editFormInstances = []
         this.errors = []
         this.reviewerIDs = new Map<string, string[]>()
@@ -116,7 +116,7 @@ export class ContextHelper {
     }
 
     releaseIdentityData() {
-        this.identities = []
+        // this.identities = []
         this.identitiesById = new Map()
         // this.currentIdentities = []
     }
@@ -125,9 +125,9 @@ export class ContextHelper {
         this.sources = []
     }
 
-    releaseFormData() {
-        this.forms = []
-    }
+    // releaseFormData() {
+    //     this.forms = []
+    // }
 
     releaseUniqueFormData() {
         this.uniqueFormInstances = []
@@ -159,7 +159,7 @@ export class ContextHelper {
         const wfName = `${WORKFLOW_NAME} (${this.config!.cloudDisplayName})`
         this.emailer = await this.getEmailWorkflow(wfName, owner)
 
-        this.identities = []
+        // this.identities = []
         this.identitiesById = new Map()
         this.accounts = []
         this.authoritativeAccounts = []
@@ -244,8 +244,8 @@ export class ContextHelper {
         this.config.merging_map.map((x) => `attributes.${x.identity}`).forEach((x) => attributes.add(x))
         this.config.merging_attributes.map((x) => `attributes.${x}`).forEach((x) => attributes.add(x))
 
-        this.identities = await this.client.listIdentities([...attributes])
-        this.identities.forEach((x) => {
+        const identities = await this.client.listIdentities([...attributes])
+        identities.forEach((x) => {
             this.identitiesById.set(x.id, x)
             if (this.config.uid_scope === 'platform') this.ids.add(x.attributes!.uid)
         })
@@ -263,11 +263,17 @@ export class ContextHelper {
     }
 
     async getIdentityByUID(uid: string): Promise<IdentityDocument | undefined> {
-        if (this.identities.length > 0) {
-            return this.identities.find((x) => x.attributes!.uid === uid)
+        if (this.identitiesById.size > 0) {
+            const values = this.identitiesById.values()
+            for (const identity of values) {
+                if (identity.attributes!.uid === uid) return identity
+            }
+
+            // return this.identities.find((x) => x.attributes!.uid === uid)
         } else {
             const identity = await this.client.getIdentityByUID(uid)
-            this.identities.push(identity!)
+            this.identitiesById.set(identity!.id, identity!)
+            // this.identities.push(identity!)
             return identity
         }
     }
@@ -725,8 +731,8 @@ export class ContextHelper {
         return formInstances ? formInstances : []
     }
 
-    getFormByID(id: string): FormDefinitionResponseBeta | undefined {
-        return this.forms.find((x) => x.id === id)
+    getUniqueFormByID(id: string): FormDefinitionResponseBeta | undefined {
+        return this.uniqueForms.find((x) => x.id === id)
     }
 
     getUniqueFormInstanceByReviewerID(
@@ -745,9 +751,9 @@ export class ContextHelper {
     }
 
     private async loadForms() {
-        this.forms = await this.client.listForms()
-        this.uniqueForms = this.forms.filter((x) => x.name?.startsWith(this.getUniqueFormName()))
-        this.editForms = this.forms.filter((x) => x.name?.startsWith(this.getEditFormName()))
+        const forms = await this.client.listForms()
+        this.uniqueForms = forms.filter((x) => x.name?.startsWith(this.getUniqueFormName()))
+        this.editForms = forms.filter((x) => x.name?.startsWith(this.getEditFormName()))
 
         let formInstances = await this.client.listFormInstances()
 
@@ -844,10 +850,15 @@ export class ContextHelper {
     }
 
     buildCandidatesAttributes() {
-        const candidatesAttributes = this.identities.map((x) =>
-            buildIdentityAttributesObject(x, this.config.merging_map)
-        )
-        this.candidatesStringAttributes = candidatesAttributes.map((x) => JSON.stringify(x))
+        // const candidatesAttributes = this.identities.map((x) =>
+        //     buildIdentityAttributesObject(x, this.config.merging_map)
+        // )
+        // this.candidatesStringAttributes = candidatesAttributes.map((x) => JSON.stringify(x))
+        for (const identity of this.identitiesById.values()) {
+            this.candidatesStringAttributes.push(
+                JSON.stringify(buildIdentityAttributesObject(identity, this.config.merging_map))
+            )
+        }
     }
 
     private findIdenticalMatch(account: Account): IdentityDocument | undefined {
@@ -857,7 +868,13 @@ export class ContextHelper {
 
         const firstIndex = this.candidatesStringAttributes.indexOf(accountStringAttributes)
         if (firstIndex > -1) {
-            match = this.identities[firstIndex]
+            const identities = this.identitiesById.values()
+            let i = 0
+            while (i++ < firstIndex) {
+                identities.next()
+            }
+            match = identities.next().value
+            // match = this.identities[firstIndex]
         }
 
         return match
@@ -868,7 +885,7 @@ export class ContextHelper {
         const accountAttributes = buildAccountAttributesObject(account, this.config.merging_map, true)
         const length = Object.keys(accountAttributes).length
 
-        candidates: for (const candidate of this.identities) {
+        candidates: for (const candidate of this.identitiesById.values()) {
             // const scores: number[] = []
             const scores = new Map<string, number>()
             attributes: for (const attribute of Object.keys(accountAttributes)) {

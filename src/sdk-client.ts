@@ -476,28 +476,28 @@ export class SDKClient {
         return response.data
     }
 
-    async getTransformByName(name: string): Promise<Transform | undefined> {
-        const api = new TransformsApi(this.config)
+    // async getTransformByName(name: string): Promise<Transform | undefined> {
+    //     const api = new TransformsApi(this.config)
 
-        const response = await api.listTransforms()
+    //     const response = await api.listTransforms()
 
-        return response.data.find((x) => x.name === name)
-    }
+    //     return response.data.find((x) => x.name === name)
+    // }
 
-    async testTransform(
-        identityId: string,
-        identityAttributeConfig: IdentityAttributeConfigBeta
-    ): Promise<string | undefined> {
-        const api = new IdentityProfilesBetaApi(this.config)
+    // async testTransform(
+    //     identityId: string,
+    //     identityAttributeConfig: IdentityAttributeConfigBeta
+    // ): Promise<string | undefined> {
+    //     const api = new IdentityProfilesBetaApi(this.config)
 
-        const response = await api.showGenerateIdentityPreview({
-            identityPreviewRequestBeta: { identityId, identityAttributeConfig },
-        })
-        const attributes = response.data.previewAttributes
-        const testAttribute = attributes?.find((x) => x.name === 'uid')
+    //     const response = await api.showGenerateIdentityPreview({
+    //         identityPreviewRequestBeta: { identityId, identityAttributeConfig },
+    //     })
+    //     const attributes = response.data.previewAttributes
+    //     const testAttribute = attributes?.find((x) => x.name === 'uid')
 
-        return testAttribute && testAttribute.value ? testAttribute.value.toString() : undefined
-    }
+    //     return testAttribute && testAttribute.value ? testAttribute.value.toString() : undefined
+    // }
 
     async getLatestAccountAggregation(sourceName: string): Promise<SearchDocument | undefined> {
         const api = new SearchApi(this.config)

@@ -10,27 +10,27 @@ import { SDKClient } from '../sdk-client'
 export const buildUniqueID = async (account: Account, currentIDs: string[], config: Config): Promise<string> => {
     const c = 'buildUniqueID'
 
-    let template = velocityjs.parse(config.uid_template)
-    if (!template.find((x) => x.id === 'counter')) {
-        template = velocityjs.parse(config.uid_template + '$counter')
+    let parsedTemplateAst = velocityjs.parse(config.uid_template)
+    if (!parsedTemplateAst.find((x) => x.id === 'counter')) {
+        parsedTemplateAst = velocityjs.parse(config.uid_template + '$counter')
     }
-    const velocity = new velocityjs.Compile(template)
+    const velocity = new velocityjs.Compile(parsedTemplateAst)
 
     let found = false
     let counter = 0
     let id = ''
     while (!found) {
         logger.debug(lm('Building context', c, 2))
-        let context = buildAccountAttributesObject(account, config.merging_map)
-        context = { ...account.attributes, ...context }
+        let velocityContext = buildAccountAttributesObject(account, config.merging_map)
+        velocityContext = { ...account.attributes, ...velocityContext }
         if (counter > 0) {
             const c = '0'.repeat(Math.max(0, config.uid_digits - counter.toString().length)) + counter
-            context.counter = c
+            velocityContext.counter = c
         } else {
-            context.counter = ''
+            velocityContext.counter = ''
         }
 
-        id = velocity.render(context)
+        id = velocity.render(velocityContext)
         logger.debug(lm(`Template render result: ${id}`, c, 2))
         if (id.length === 0) {
             throw new Error('No value returned by template')
@@ -104,7 +104,7 @@ export const buildUniqueAccount = async (
 }
 
 export const buildUniqueAccountFromID = async (
-    id: string,
+    nativeIdentity: string,
     schema: AccountSchema,
     source: Source,
     identities: IdentityDocument[],
@@ -113,17 +113,17 @@ export const buildUniqueAccountFromID = async (
 ): Promise<UniqueAccount> => {
     const c = 'buildUniqueAccountFromID'
     logger.debug(lm(`Fetching original account`, c, 1))
-    const account = await client.getAccountBySourceAndNativeIdentity(source.id!, id)
+    const fusionAccount = await client.getAccountBySourceAndNativeIdentity(source.id!, nativeIdentity)
     const sourceAccounts: Account[] = []
-    if (account) {
-        const identity = await client.getIdentity(account.identityId!)
+    if (fusionAccount) {
+        const identity = await client.getIdentity(fusionAccount.identityId!)
         const accounts = await client.getAccountsByIdentity(identity!.id!)
         const correlatedAccounts = accounts
-            .filter((x) => config.sources.includes(x.sourceName!))
-            .map((x) => x.id as string)
-        account.attributes.accounts = combineArrays(correlatedAccounts, account.attributes.accounts)
+            .filter((acct) => config.sources.includes(acct.sourceName!))
+            .map((acct) => acct.id as string)
+        fusionAccount.attributes.accounts = combineArrays(correlatedAccounts, fusionAccount.attributes.accounts)
 
-        for (const acc of account.attributes.accounts) {
+        for (const acc of fusionAccount.attributes.accounts) {
             logger.debug(lm(`Looking for ${acc} account`, c, 1))
             const response = await client.getAccount(acc)
             if (response) {
@@ -134,7 +134,7 @@ export const buildUniqueAccountFromID = async (
             }
         }
 
-        const uniqueAccount = await refreshAccount(account, sourceAccounts, schema, identities, config, client)
+        const uniqueAccount = await refreshAccount(fusionAccount, sourceAccounts, schema, identities, config, client)
         return uniqueAccount
     } else {
         throw new ConnectorError('Account not found', ConnectorErrorType.NotFound)

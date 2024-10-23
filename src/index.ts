@@ -116,18 +116,18 @@ export const connector = async () => {
 
                         if (identityMatch) {
                             logger.debug(`Updating existing account for ${decision}.`)
-                            const uniqueAccount = ctx.accounts.find((x) => x.identityId === identityMatch.id) as Account
+                            const fusionAccount = ctx.accounts.find((x) => x.identityId === identityMatch.id) as Account
                             const uncorrelatedAccount = (await ctx.getAccount(accountID)) as Account
                             const msg = datedMessage(message, uncorrelatedAccount)
-                            uniqueAccount.attributes.accounts.push(account)
-                            uniqueAccount.attributes.history.push(msg)
-                            uniqueAccount.attributes.status.push('manual')
+                            fusionAccount.attributes.accounts.push(account)
+                            fusionAccount.attributes.history.push(msg)
+                            fusionAccount.attributes.status.push('manual')
                         } else {
                             logger.debug(`Creating new unique account.`)
                             const pendingAccount = pendingAccounts.find((x) => x.id === account) as Account
 
                             try {
-                                const uniqueAccount = await ctx.buildUniqueAccount(
+                                const fusionAccount = await ctx.buildUniqueAccount(
                                     pendingAccount,
                                     'authorized',
                                     message
@@ -179,7 +179,7 @@ export const connector = async () => {
             for (const correlatedAccount of correlatedAccounts) {
                 try {
                     const message = 'Baseline account'
-                    const uniqueAccount = await ctx.buildUniqueAccount(correlatedAccount, 'baseline', message)
+                    const fusionAccount = await ctx.buildUniqueAccount(correlatedAccount, 'baseline', message)
                 } catch (e) {
                     ctx.handleError(e)
                 }
@@ -194,7 +194,7 @@ export const connector = async () => {
             for (const uncorrelatedAccount of pendingAccounts) {
                 try {
                     const message = 'Baseline account'
-                    const uniqueAccount = await ctx.buildUniqueAccount(uncorrelatedAccount, 'baseline', message)
+                    const fusionAccount = await ctx.buildUniqueAccount(uncorrelatedAccount, 'baseline', message)
                 } catch (e) {
                     ctx.handleError(e)
                 }
@@ -209,7 +209,7 @@ export const connector = async () => {
                 const { processedAccount, uniqueForm } = await ctx.processUncorrelatedAccount(uncorrelatedAccount)
                 if (processedAccount) {
                     const message = `No matching identity found`
-                    const uniqueAccount = await ctx.buildUniqueAccount(uncorrelatedAccount, 'unmatched', message)
+                    const fusionAccount = await ctx.buildUniqueAccount(uncorrelatedAccount, 'unmatched', message)
                 } else if (uniqueForm) {
                     if (reviewerIDs.length > 0) {
                         logger.debug(`Creating merging form`)
@@ -217,7 +217,7 @@ export const connector = async () => {
                         ctx.forms.push(form)
                     } else {
                         const message = `Potential matching identity found but no reviewers configured`
-                        const uniqueAccount = await ctx.buildUniqueAccount(uncorrelatedAccount, 'unmatched', message)
+                        const fusionAccount = await ctx.buildUniqueAccount(uncorrelatedAccount, 'unmatched', message)
                     }
                 }
             } catch (e) {
@@ -278,8 +278,8 @@ export const connector = async () => {
                     reviewerAccount = await ctx.getAccount(reviewerAccountID)
                     if (reviewerAccount) {
                         const message = 'Unique account for reviewer'
-                        const uniqueAccount = await ctx.buildUniqueAccount(reviewerAccount, 'reviewer', message)
-                        uniqueAccount.attributes!.reviews = reviews
+                        const fusionAccount = await ctx.buildUniqueAccount(reviewerAccount, 'reviewer', message)
+                        fusionAccount.attributes!.reviews = reviews
                     } else {
                         throw new Error(`Unable to find base account for reviewer ID ${reviewerID}`)
                     }
@@ -292,10 +292,10 @@ export const connector = async () => {
         //BUILD RESULTING ACCOUNTS
         logger.info('Building accounts.')
 
-        const accounts = await ctx.getUniqueAccounts()
+        const finalAccountsList = await ctx.getUniqueAccounts()
 
         logger.info('Sending accounts.')
-        for (const account of accounts) {
+        for (const account of finalAccountsList) {
             logger.info(account)
             res.send(account)
         }
@@ -317,9 +317,9 @@ export const connector = async () => {
         if (input.schema) {
             ctx.schema = input.schema
         }
-        const account = await ctx.buildUniqueAccountFromID(input.identity)
-        logger.info(account)
-        res.send(account)
+        const fusionAccount = await ctx.buildUniqueAccountFromID(input.identity)
+        logger.info(fusionAccount)
+        res.send(fusionAccount)
     }
 
     const stdAccountEnable: StdAccountEnableHandler = async (context, input, res) => {
@@ -340,8 +340,8 @@ export const connector = async () => {
             res.keepAlive()
         }, PROCESSINGWAIT)
 
-        const account = ctx.buildUniqueAccountFromID(input.identity)
-        account
+        const fusionAccount = ctx.buildUniqueAccountFromID(input.identity)
+        fusionAccount
             .then((result) => {
                 logger.info(result)
                 res.send(result)
@@ -352,7 +352,7 @@ export const connector = async () => {
                 clearInterval(interval) // Stops checking if the promise is rejected
             })
 
-        await account
+        await fusionAccount
     }
 
     const stdAccountDisable: StdAccountDisableHandler = async (context, input, res) => {

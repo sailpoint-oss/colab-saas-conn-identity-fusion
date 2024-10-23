@@ -173,9 +173,9 @@ export class SDKClient {
         return response.data
     }
 
-    async getAccountBySourceAndNativeIdentity(id: string, nativeIdentity: string): Promise<Account | undefined> {
+    async getAccountBySourceAndNativeIdentity(sourceId: string, nativeIdentity: string): Promise<Account | undefined> {
         const api = new AccountsApi(this.config)
-        const filters = `sourceId eq "${id}" and nativeIdentity eq "${nativeIdentity}"`
+        const filters = `sourceId eq "${sourceId}" and nativeIdentity eq "${nativeIdentity}"`
         const search = async (
             requestParameters?: AccountsApiListAccountsRequest | undefined,
             axiosOptions?: AxiosRequestConfig<any> | undefined

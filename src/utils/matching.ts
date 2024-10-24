@@ -1,16 +1,13 @@
 import { Account, IdentityDocument } from 'sailpoint-api-client'
 import { buildAccountAttributesObject, buildIdentityAttributesObject } from '.'
 import { lig3 } from './lig'
+import { IdentityMatch, MergingMap } from '../model/types'
 
 //================ MATCHING ================
 export const findIdenticalMatch = (
     account: Account,
     candidates: IdentityDocument[],
-    mergingMap: {
-        account: string[]
-        identity: string
-        uidOnly: boolean
-    }[]
+    mergingMap: MergingMap[]
 ): IdentityDocument | undefined => {
     let match: IdentityDocument | undefined
     const accountAttributes = buildAccountAttributesObject(account, mergingMap)
@@ -29,29 +26,27 @@ export const findIdenticalMatch = (
 export const findSimilarMatches = (
     account: Account,
     candidates: IdentityDocument[],
-    mergingMap: {
-        account: string[]
-        identity: string
-        uidOnly: boolean
-    }[],
-    score: number
-): { identity: IdentityDocument; score: string }[] => {
-    const similarMatches: { identity: IdentityDocument; score: string }[] = []
+    mergingMap: MergingMap[],
+    thresholdScore: number
+): IdentityMatch[] => {
+    const similarMatches: IdentityMatch[] = []
     const accountAttributes = buildAccountAttributesObject(account, mergingMap)
     const length = Object.keys(accountAttributes).length
 
     for (const candidate of candidates) {
         const scores: number[] = []
         for (const attribute of Object.keys(accountAttributes)) {
-            let cValue, iValue
-            iValue = accountAttributes[attribute] as string
-            cValue = candidate.attributes![attribute] as string
-            if (iValue && cValue) {
-                const similarity = lig3(iValue, cValue)
+            let identityValue, accountValue
+            accountValue = accountAttributes[attribute] as string
+            identityValue = candidate.attributes![attribute] as string
+            if (accountValue && identityValue) {
+                // Score between 0 and 1
+                const similarity = lig3(accountValue, identityValue)
                 scores.push(similarity)
             }
         }
 
+        // Average score between 0 and 100
         const finalScore =
             (scores.reduce((p, c) => {
                 return p + c
@@ -59,7 +54,7 @@ export const findSimilarMatches = (
                 length) *
             100
 
-        if (finalScore >= score) {
+        if (finalScore >= thresholdScore) {
             similarMatches.push({ identity: candidate, score: finalScore.toFixed(0) })
         }
     }

@@ -31,6 +31,7 @@ import { AxiosError } from 'axios'
 import { UniqueAccount } from '../model/account'
 
 import MarkdownIt from 'markdown-it'
+import { AttributeMap, IdentityMatch, MergingMap } from '../model/types'
 
 export const md = MarkdownIt({
     breaks: true,
@@ -228,6 +229,14 @@ export const getReviewerIDs = async (client: SDKClient, reviewer?: string): Prom
 
 //================ ACCOUNTS ================
 
+/**
+ * Refreshes the 'accounts' attribute on an existing (correlated / enabled) fusion account
+ * by pulling the list of relevant correlated accounts from the Identity.
+ * 
+ * @param account The fusion account being processed
+ * @param identities The list of identities in the system
+ * @param sourceNames The list of relevant source names
+ */
 export const updateAccountLinks = (account: Account, identities: IdentityDocument[], sourceNames: string[]) => {
     if (account.uncorrelated === false && account.disabled === false) {
         const identity = identities.find((x) => x.id === account.identityId)
@@ -240,6 +249,17 @@ export const updateAccountLinks = (account: Account, identities: IdentityDocumen
     }
 }
 
+/**
+ * Handles an incoming Source account by attempting to match it to an Identity
+ * 
+ * @param uncorrelatedAccount The uncorrelated account (from an auth source) being processed
+ * @param currentAccounts The full list of current Fusion accounts
+ * @param currentIdentities The full list of current Identities
+ * @param source The Fusion source object 
+ * @param config The connector configuration
+ * @param deduplicate True, if we should attempt non-exact matching
+ * @returns Either a processed account 
+ */
 export const processUncorrelatedAccount = async (
     uncorrelatedAccount: Account,
     currentAccounts: Account[],
@@ -265,10 +285,7 @@ export const processUncorrelatedAccount = async (
         account.attributes.history.push(message)
         // Check if similar match exists
     } else {
-        let similarMatches: {
-            identity: IdentityDocument
-            score: string
-        }[] = []
+        let similarMatches: IdentityMatch[] = []
         if (deduplicate) {
             logger.debug(
                 lm(`Checking similar matches for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id})`, c, 1)
@@ -463,17 +480,9 @@ export const normalizeAccountAttributes = (
 //================ ATTRIBUTES ================
 export const buildAccountAttributesObject = (
     account: Account,
-    mergingMap: {
-        account: string[]
-        identity: string
-        uidOnly: boolean
-    }[]
-): {
-    [key: string]: any
-} => {
-    const attributeObject: {
-        [key: string]: any
-    } = {}
+    mergingMap: MergingMap[]
+): AttributeMap => {
+    const attributeObject: AttributeMap = {}
 
     for (const { identity: identityAttrName, account: accountAttrNames } of mergingMap.filter((x) => x.uidOnly === false)) {
         for (const value of accountAttrNames.reverse()) {
@@ -492,17 +501,9 @@ export const buildAccountAttributesObject = (
 
 export const buildIdentityAttributesObject = (
     identity: IdentityDocument,
-    mergingMap: {
-        account: string[]
-        identity: string
-        uidOnly: boolean
-    }[]
-): {
-    [key: string]: any
-} => {
-    const attributeObject: {
-        [key: string]: any
-    } = {}
+    mergingMap: MergingMap[]
+): AttributeMap => {
+    const attributeObject: AttributeMap = {}
 
     for (const { identity: identityAttrName } of mergingMap.filter((x) => x.uidOnly === false)) {
         attributeObject[identityAttrName] = identity.attributes![identityAttrName]

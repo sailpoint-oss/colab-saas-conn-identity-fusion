@@ -64,6 +64,12 @@ export class ContextHelper {
         this.errors = []
     }
 
+    /**
+     * Initializes the configuration, source configs, and, optionally, the set of
+     * identities and accounts already in ISC for aggregation.
+     * 
+     * @param skipData If all identity and account data should be pulled
+     */
     async init(skipData?: boolean) {
         logger.debug(lm(`Reading config.`, this.c))
         this.config = await readConfig()
@@ -93,6 +99,7 @@ export class ContextHelper {
         this.reviewerIDs = await getReviewerIDs(this.client, this.config?.merging_reviewer)
 
         if (!skipData) {
+            // For full aggregation
             this.identities = await this.getIdentities()
             this.accounts = await this.getAccounts()
             const identityIDs = this.accounts.map((x) => x.identityId)
@@ -101,6 +108,7 @@ export class ContextHelper {
             this.forms = await this.getForms()
             this.formInstances = await this.getFormInstances(this.forms)
         } else {
+            // For read-account, we don't need everybody else's data
             this.identities = []
             this.accounts = []
             this.authoritativeAccounts = []
@@ -123,10 +131,16 @@ export class ContextHelper {
         }
     }
 
+    /**
+     * @returns The Identity Fusion source
+     */
     getSource(): Source {
         return this.source!
     }
 
+    /**
+     * @returns The list of Source objects corresponding to the configured auth sources in the Fusion source
+     */
     getSources(): Source[] {
         return this.sources
     }
@@ -135,6 +149,9 @@ export class ContextHelper {
         return this.reviewerIDs
     }
 
+    /**
+     * @returns All (indexed) identities in the ISC system
+     */
     async getIdentities(): Promise<IdentityDocument[]> {
         const c = 'getIdentities'
         logger.info(lm('Fetching identities.', c))
@@ -147,18 +164,25 @@ export class ContextHelper {
         this.identities = await this.getIdentities()
     }
 
+    /**
+     * Retrieves all existing Fusion account objects (for the configured Source)
+     * 
+     * @returns The account data
+     */
     async getAccounts(): Promise<Account[]> {
         const c = 'getAccounts'
         const config = await this.getConfig()
         const client = this.getClient()
+
+        // Fusion source
         const source = this.getSource()
 
         logger.info(lm('Fetching existing accounts.', c))
-        let accounts = await client.listAccountsBySource(source.id!)
-        accounts = accounts || []
+        let existingFusionAccounts = await client.listAccountsBySource(source.id!)
+        existingFusionAccounts = existingFusionAccounts || []
 
         logger.debug(lm('Updating existing account links.', c))
-        for (const account of accounts) {
+        for (const account of existingFusionAccounts) {
             updateAccountLinks(account, this.identities, config.sources)
             account.attributes.accounts = account.attributes.accounts || []
             account.attributes.status = account.attributes.status || []
@@ -166,7 +190,7 @@ export class ContextHelper {
             account.attributes.history = account.attributes.history || []
         }
         if (this.config?.deleteEmpty) {
-            accounts = accounts.filter(
+            existingFusionAccounts = existingFusionAccounts.filter(
                 (x) =>
                     !(
                         x.uncorrelated === false &&
@@ -176,7 +200,7 @@ export class ContextHelper {
             )
         }
 
-        return accounts
+        return existingFusionAccounts
     }
 
     async getAccount(id: string): Promise<Account | undefined> {

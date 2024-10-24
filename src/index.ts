@@ -80,7 +80,10 @@ export const connector = async () => {
         }
         await ctx.init()
         const reviewerIDs = ctx.getReviewerIDs()
+        // The set of all accounts already listed on some Identity Fusion account
         const processedAccounts = ctx.accounts.map((x) => x.attributes.accounts).flat(1)
+
+        // The set of all accounts we need to normalize and evaluate
         let pendingAccounts: Account[]
         if (config.includeExisting) {
             logger.debug('Including existing identities.')
@@ -202,8 +205,8 @@ export const connector = async () => {
             pendingAccounts = []
         }
 
-        //PROCESS UNCORRELATED ACCOUNTS
-        logger.info('Processing uncorrelated accounts.')
+        //PROCESS UNCORRELATED ACCOUNTS (accounts not yet linked to a Fusion object)
+        logger.info('Processing uncorrelated source accounts.')
         for (const uncorrelatedAccount of pendingAccounts) {
             try {
                 const { processedAccount, uniqueForm } = await ctx.processUncorrelatedAccount(uncorrelatedAccount)

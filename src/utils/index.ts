@@ -475,15 +475,15 @@ export const buildAccountAttributesObject = (
         [key: string]: any
     } = {}
 
-    for (const { identity: key, account: values } of mergingMap.filter((x) => x.uidOnly === false)) {
-        for (const value of values.reverse()) {
+    for (const { identity: identityAttrName, account: accountAttrNames } of mergingMap.filter((x) => x.uidOnly === false)) {
+        for (const value of accountAttrNames.reverse()) {
             const v = account.attributes[value]
             if (v) {
-                attributeObject[key] = account.attributes[value]
+                attributeObject[identityAttrName] = account.attributes[value]
             }
         }
-        if (!attributeObject[key]) {
-            attributeObject[key] = ''
+        if (!attributeObject[identityAttrName]) {
+            attributeObject[identityAttrName] = ''
         }
     }
 
@@ -504,8 +504,8 @@ export const buildIdentityAttributesObject = (
         [key: string]: any
     } = {}
 
-    for (const { identity: key } of mergingMap.filter((x) => x.uidOnly === false)) {
-        attributeObject[key] = identity.attributes![key]
+    for (const { identity: identityAttrName } of mergingMap.filter((x) => x.uidOnly === false)) {
+        attributeObject[identityAttrName] = identity.attributes![identityAttrName]
     }
 
     return attributeObject

@@ -28,7 +28,6 @@ import { Config } from './model/config'
 // Connector must be exported as module property named connector
 export const connector = async () => {
     const config: Config = await readConfig()
-    let n = 0
     //==============================================================================================================
 
     //TODO improve
@@ -321,7 +320,6 @@ export const connector = async () => {
                 promise.then((account) => {
                     logger.debug({ account })
                     res.send(account)
-                    console.timeLog('stdAccountList', `${++n} ${account.attributes.uniqueID}`)
                 })
             }
 

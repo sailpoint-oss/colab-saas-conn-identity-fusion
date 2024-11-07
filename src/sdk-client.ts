@@ -23,8 +23,6 @@ import {
     TestWorkflowRequestBeta,
     PostExternalExecuteWorkflowRequestBeta,
     WorkflowOAuthClientBeta,
-    IdentityProfilesBetaApi,
-    IdentityAttributeConfigBeta,
     EntitlementsBetaApi,
     EntitlementBeta,
     IdentityBeta,

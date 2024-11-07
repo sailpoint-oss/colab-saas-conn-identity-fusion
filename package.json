@@ -19,6 +19,7 @@
         "axios-request-throttle": "^1.0.0",
         "axios-retry": "^4.5.0",
         "fast-levenshtein": "3.0.0",
+        "identity-fusion": "file:",
         "markdown-it": "^14.0.0",
         "sailpoint-api-client": "1.4.8",
         "transliteration": "^2.3.5",

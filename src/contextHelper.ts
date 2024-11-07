@@ -141,11 +141,7 @@ export class ContextHelper {
 
     async init(schema?: AccountSchema, lazy?: boolean) {
         logger.debug(lm(`Looking for connector instance`, this.c))
-        if (schema) {
-            this.loadSchema(schema)
-        } else {
-            await this.getSchema()
-        }
+
         const id = this.config!.spConnectorInstanceId as string
         const allSources = await this.client.listSources()
         this.source = allSources.find((x) => (x.connectorAttributes as any).spConnectorInstanceId === id)
@@ -153,6 +149,12 @@ export class ContextHelper {
 
         if (!this.source) {
             throw new ConnectorError('No connector source was found on the tenant.')
+        }
+
+        if (schema) {
+            this.loadSchema(schema)
+        } else {
+            await this.getSchema()
         }
 
         const owner = getOwnerFromSource(this.source)

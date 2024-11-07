@@ -106,7 +106,6 @@ const buildEditTopSection = (label: string, description: string, attributes?: st
 
 const buildUniqueTopSection = (label: string, description: string, attributes?: string[]): FormElementBeta => {
     let formElements: any[] = []
-    let count = 0
     if (attributes) {
         formElements = attributes.map((x) => buildFormDefinitionTextElement(x, x))
     }
@@ -437,7 +436,7 @@ export class UniqueForm implements CreateFormDefinitionRequestBeta {
             'This is a new identity',
             'This is a new identity'
         )
-        const label = `Potential Identity Merge from source ${account.sourceName}`
+        const label = `Potential Identity Merge from ${account.sourceName}`
         const description =
             'Potentially duplicated identity was found. Please review the list of possible matches from existing identities and select the right one.'
         const topSection = buildUniqueTopSection(label, description, attributes)

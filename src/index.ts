@@ -53,7 +53,7 @@ export const connector = async () => {
     }
 
     const stdAccountList: StdAccountListHandler = async (context, input, res): Promise<void> => {
-        console.time('stdAccountList')
+        // console.time('stdAccountList')
         //Keepalive
         const interval = setInterval(() => {
             res.keepAlive()
@@ -68,7 +68,7 @@ export const connector = async () => {
             //Compiling info
             logger.info('Loading data.')
             await ctx.init(input.schema)
-            console.timeLog('stdAccountList', 'init')
+            // console.timeLog('stdAccountList', 'init')
             await ctx.checkSelectedSourcesAggregation()
             const processedAccountIDs = ctx.listProcessedAccountIDs()
             let pendingAccounts = ctx
@@ -123,6 +123,9 @@ export const connector = async () => {
                                             'authorized',
                                             message
                                         )
+                                        const formData = currentFormInstance.formData!
+                                        delete formData.identities
+                                        uniqueAccount.attributes = { ...uniqueAccount.attributes, ...formData }
                                     } catch (e) {
                                         ctx.handleError(e)
                                     }
@@ -156,7 +159,7 @@ export const connector = async () => {
                     }
                 }
             }
-            console.timeLog('stdAccountList', 'process form instances')
+            // console.timeLog('stdAccountList', 'process form instances')
 
             //PROCESS EXISTING IDENTITIES/CREATE BASELINE
             logger.info('Processing existing identities.')
@@ -177,7 +180,7 @@ export const connector = async () => {
             if (pendingAccounts.length > 0) {
                 ctx.buildCandidatesAttributes()
             }
-            console.timeLog('stdAccountList', 'correlated accounts')
+            // console.timeLog('stdAccountList', 'correlated accounts')
 
             //CREATE BASELINE
             if (ctx.isFirstRun()) {
@@ -193,7 +196,7 @@ export const connector = async () => {
                 }
                 pendingAccounts = []
             }
-            console.timeLog('stdAccountList', 'baseline')
+            // console.timeLog('stdAccountList', 'baseline')
 
             //PROCESS UNCORRELATED ACCOUNTS
             logger.info('Processing uncorrelated accounts.')
@@ -209,7 +212,7 @@ export const connector = async () => {
                     ctx.handleError(e)
                 }
             }
-            console.timeLog('stdAccountList', 'uncorrelated accounts')
+            // console.timeLog('stdAccountList', 'uncorrelated accounts')
 
             if (await ctx.isMergingEnabled()) {
                 //PROCESS FORMS
@@ -237,7 +240,7 @@ export const connector = async () => {
                         }
                     }
                 }
-                console.timeLog('stdAccountList', 'process forms')
+                // console.timeLog('stdAccountList', 'process forms')
 
                 //PROCESS REVIEWERS
                 logger.info('Processing reviewers.')
@@ -258,7 +261,7 @@ export const connector = async () => {
                     }
                 }
             }
-            console.timeLog('stdAccountList', 'process reviewers')
+            // console.timeLog('stdAccountList', 'process reviewers')
 
             ctx.releaseUniqueFormData()
 
@@ -307,7 +310,7 @@ export const connector = async () => {
                     }
                 }
             }
-            console.timeLog('stdAccountList', 'process edit forms')
+            // console.timeLog('stdAccountList', 'process edit forms')
 
             // ctx.releaseFormData()
             ctx.releaseEditFormData()
@@ -329,7 +332,7 @@ export const connector = async () => {
         }
 
         ctx.logErrors(context, input)
-        console.timeEnd('stdAccountList')
+        // console.timeEnd('stdAccountList')
     }
 
     const stdAccountRead: StdAccountReadHandler = async (context, input, res) => {

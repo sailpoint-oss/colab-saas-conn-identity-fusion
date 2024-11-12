@@ -382,6 +382,20 @@
                 "type": "string",
                 "multi": true,
                 "entitlement": false
+            },
+            {
+                "name": "sources",
+                "description": "sources",
+                "type": "string",
+                "multi": false,
+                "entitlement": false
+            },
+            {
+                "name": "IIQDisabled",
+                "description": "Disabled",
+                "type": "string",
+                "multi": false,
+                "entitlement": false
             }
         ]
     },

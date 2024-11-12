@@ -19,6 +19,7 @@ export const reservedAttributes = [
     'actions',
     'reviews',
     'accounts',
+    'sources',
     'IIQDisabled',
     'IIQLocked',
     'idNowDescription',

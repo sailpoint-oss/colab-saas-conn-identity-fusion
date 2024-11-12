@@ -44,7 +44,7 @@ Content-Type: application/json
 {
   "type": "std:account:read",
   "input": {
-    "identity": "3175644"
+    "identity": "f1838af6-f7c6-48ac-8197-e020ca0820f3"
   },
   "config": {{config}}
 }

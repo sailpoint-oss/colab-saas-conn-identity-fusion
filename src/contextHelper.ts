@@ -437,7 +437,6 @@ export class ContextHelper {
 
         const sourceAccounts = await this.listSourceAccounts(account)
         let needsRefresh = false
-        // let sourceAccountsChanged = false
 
         if (account.uncorrelated) {
             logger.debug(lm(`New account. Needs to be enabled.`, c, 2))
@@ -449,17 +448,11 @@ export class ContextHelper {
             let accountIds: string[] = []
             if (identity) {
                 const accounts = identity.accounts!
-                const originalAccountIdsStr = account.attributes!.accounts.sort().toString()
                 accountIds = accounts.filter((x) => this.config.sources.includes(x.source!.name!)).map((x) => x.id!)
-                const accountIdsStr = accountIds.sort().toString()
+                const maxIds = Math.max(accountIds.length, account.attributes!.accounts.length)
+                const diffIds = new Set(accountIds.concat(account.attributes!.accounts ?? []))
 
-                if (
-                    accountIdsStr.indexOf(originalAccountIdsStr) === -1 ||
-                    originalAccountIdsStr.indexOf(accountIdsStr) === -1
-                    // !originalAccountIds.every((item) => accountIds.includes(item)) ||
-                    // !accountIds.every((item) => originalAccountIds.includes(item))
-                ) {
-                    // sourceAccountsChanged = true
+                if (maxIds < diffIds.size) {
                     needsRefresh = true
                     const isEdited = account.attributes!.statuses.includes('edited')
                     if (isEdited) {
@@ -490,7 +483,10 @@ export class ContextHelper {
 
             if (account.attributes!.accounts.length === 0) {
                 needsRefresh = false
-            } else if (!account.attributes!.statuses.some((x: string) => ['edited', 'orphan'].includes(x))) {
+            } else if (
+                !needsRefresh ||
+                !account.attributes!.statuses.some((x: string) => ['edited', 'orphan'].includes(x))
+            ) {
                 const lastConfigChange = new Date(this.source!.modified!).getTime()
                 const lastModified = new Date(account.modified!).getTime()
                 if (lastModified < lastConfigChange) {
@@ -604,6 +600,7 @@ export class ContextHelper {
                 }
             }
 
+            attributes.sources = sourceAccounts.map((x) => `[${x.sourceName}]`).join(' ')
             account.attributes = attributes
         }
     }
@@ -1238,6 +1235,13 @@ export class ContextHelper {
                 description: 'Reviews',
                 type: 'string',
                 multi: true,
+                entitlement: false,
+            },
+            {
+                name: 'sources',
+                description: 'sources',
+                type: 'string',
+                multi: false,
                 entitlement: false,
             },
             {

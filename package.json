@@ -14,7 +14,6 @@
     "private": true,
     "dependencies": {
         "@sailpoint/connector-sdk": "1.1.12",
-        "@tidyjs/tidy": "^2.5.2",
         "axios": "^1.6.8",
         "axios-request-throttle": "^1.0.0",
         "axios-retry": "^4.5.0",

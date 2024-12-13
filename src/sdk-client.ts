@@ -46,21 +46,11 @@ import {
     TaskManagementBetaApi,
 } from 'sailpoint-api-client'
 import { URL } from 'url'
-import { logger } from '@sailpoint/connector-sdk'
-import { REQUESTSPERSECOND, TASKRESULTRETRIES, TASKRESULTWAIT } from './constants'
-import { AxiosError, AxiosResponseHeaders } from 'axios'
-
-const TOKEN_URL_PATH = '/oauth/token'
+import { TASKRESULTRETRIES, TASKRESULTWAIT, TOKEN_URL_PATH } from './constants'
+import { retriesConfig, throttleConfig } from './axios'
 
 const sleep = (ms: number) => {
     return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-const retryDelay = (retryCount: number, error: AxiosError): number => {
-    const headers = error.response!.headers as AxiosResponseHeaders
-    const retryAfter = headers.get('retry-after') as number
-
-    return retryAfter ? retryAfter : 10 * 1000
 }
 
 export class SDKClient {
@@ -68,25 +58,9 @@ export class SDKClient {
 
     constructor(config: any) {
         const tokenUrl = new URL(config.baseurl).origin + TOKEN_URL_PATH
-        this.config = new Configuration({ ...config, tokenUrl })
-        this.config.retriesConfig = {
-            retries: 5,
-            retryDelay,
-            retryCondition: (error) => {
-                return (
-                    axiosRetry.isNetworkError(error) ||
-                    axiosRetry.isRetryableError(error) ||
-                    error.response?.status === 429
-                )
-            },
-            onRetry: (retryCount, error, requestConfig) => {
-                logger.debug(
-                    `Retrying API [${requestConfig.url}] due to request error: [${error}]. Retry number [${retryCount}]`
-                )
-                logger.error(error)
-            },
-        }
-        axiosThrottle.use(axios, { requestsPerSecond: REQUESTSPERSECOND })
+        this.config = new Configuration({ ...config, tokenUrl, retriesConfig })
+        axiosRetry(axios as any, retriesConfig)
+        axiosThrottle.use(axios as any, throttleConfig)
     }
 
     async listIdentities(attributes: string[]): Promise<IdentityDocument[]> {

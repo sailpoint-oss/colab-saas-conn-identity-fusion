@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, { AxiosInstance } from 'axios'
 import axiosRetry from 'axios-retry'
 import axiosThrottle from 'axios-request-throttle'
 import {
@@ -56,11 +56,13 @@ const sleep = (ms: number) => {
     return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-const retryDelay = (retryCount: number, error: AxiosError): number => {
-    const headers = error.response!.headers as AxiosResponseHeaders
-    const retryAfter = headers.get('retry-after') as number
-
-    return retryAfter ? retryAfter : 10 * 1000
+const retryDelay = (retryCount: number, error: AxiosError | unknown): number => {
+    if (error instanceof AxiosError && error.response) {
+        const headers = error.response.headers as AxiosResponseHeaders;
+        const retryAfter = headers['retry-after'] as number;
+        return retryAfter ? retryAfter : 10 * 1000;
+    }
+    return 10 * 1000; // Default retry delay if error is not AxiosError
 }
 
 export class SDKClient {
@@ -86,7 +88,8 @@ export class SDKClient {
                 logger.error(error)
             },
         }
-        axiosThrottle.use(axios, { requestsPerSecond: REQUESTSPERSECOND })
+        const axiosInstance: AxiosInstance = axios.create();
+        axiosThrottle.use(axiosInstance as any, { requestsPerSecond: REQUESTSPERSECOND })
     }
 
     async listIdentities(attributes: string[]): Promise<IdentityDocument[]> {

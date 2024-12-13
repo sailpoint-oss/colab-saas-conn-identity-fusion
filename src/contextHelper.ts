@@ -9,6 +9,7 @@ import {
     OwnerDto,
     Schema,
     Source,
+    Transform,
     WorkflowBeta,
 } from 'sailpoint-api-client'
 import { Config } from './model/config'
@@ -37,7 +38,7 @@ import {
     stringifyIdentity,
     stringifyScore,
 } from './utils'
-import { EDITFORMNAME, NONAGGREGABLE_TYPES, UNIQUEFORMNAME, WORKFLOW_NAME, reservedAttributes } from './constants'
+import { EDITFORMNAME, NONAGGREGABLE_TYPES, TRANSFORM_NAME, UNIQUEFORMNAME, WORKFLOW_NAME, reservedAttributes } from './constants'
 import { EditForm, UniqueForm } from './model/form'
 import { buildUniqueID } from './utils/unique'
 import { ReviewEmail, ErrorEmail, ReportEmail } from './model/email'
@@ -50,6 +51,7 @@ import { Status } from './model/status'
 import { Action, ActionSource } from './model/action'
 import { actions } from './data/action'
 import { lig3 } from './utils/lig'
+import { SourceIdentityAttribute } from './model/source-identity-attribute'
 
 export class ContextHelper {
     private c: string = 'ContextHelper'
@@ -160,6 +162,10 @@ export class ContextHelper {
         const owner = getOwnerFromSource(this.source)
         const wfName = `${WORKFLOW_NAME} (${this.config!.cloudDisplayName})`
         this.emailer = await this.getEmailWorkflow(wfName, owner)
+
+        const accountIdentites = await  this.getSourceIdentityAttributes()
+        const transformName = `${TRANSFORM_NAME} (${this.config!.cloudDisplayName})`
+        await this.createTransform(transformName, accountIdentites)
 
         // this.identities = []
         this.identitiesById = new Map()
@@ -1087,6 +1093,40 @@ export class ContextHelper {
         return workflow
     }
 
+    private async createTransform(name: string,  sourceIdentityAttribute: SourceIdentityAttribute[] ): Promise<boolean> {
+        
+        const attributeValues: any = []
+        for (const sourceIdentity of sourceIdentityAttribute) {
+            attributeValues.push({
+                "type": "accountAttribute",
+                "attributes": {
+                    "sourceName": sourceIdentity.sourceName,
+                    "attributeName": sourceIdentity.identityAttribute
+                }
+            })
+        }
+        
+        const transformDef: any = {
+            "name": name,
+            "type": "static",
+            "attributes": {
+                "value": "#if($processed == 'false')staging#{else}active#end",
+                "processed": {
+                    "type": "firstValid",
+                    "attributes": {
+                        "values": attributeValues,
+                        "ignoreErrors": true
+                    }
+                }
+            },
+            "internal": false
+        }
+
+
+        const transform = await this.client.createTransform(transformDef)
+        return true
+    }
+
     isSourceReviewer(sourceName: string, identityID: string): boolean {
         return this.reviewerIDs.get(sourceName)!.includes(identityID)
     }
@@ -1167,6 +1207,21 @@ export class ContextHelper {
         }
 
         return account
+    }
+
+    private async getSourceIdentityAttributes(): Promise<SourceIdentityAttribute[]> {
+        const identityAttributes: SourceIdentityAttribute[] = []
+        for (const source of this.sources) {
+            const sourceSchemas = await this.client.listSourceSchemas(source.id!)
+            const identityAttribute = sourceSchemas.find((x) => x.name === 'account')?.identityAttribute
+            if (identityAttribute) {
+                identityAttributes.push({
+                    sourceName: source.name,
+                    identityAttribute
+                })
+            }
+        }
+        return identityAttributes
     }
 
     private async buildDynamicSchema(): Promise<AccountSchema> {

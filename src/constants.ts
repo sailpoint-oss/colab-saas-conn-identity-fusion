@@ -1,4 +1,5 @@
 export const WORKFLOW_NAME = 'Email Sender'
+export const TRANSFORM_NAME = 'Fusion Transform'
 export const PADDING = '   '
 export const MSDAY = 86400000
 export const IDENTITYNOTFOUNDWAIT = 5000

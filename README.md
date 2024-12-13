@@ -51,8 +51,6 @@ This connector aims to simplify that by adding the typical string manipulation o
 
 In addition to the template-based unique identifier, the connector assigns an immutable UUID to the account. This identifier can be synchronised to all identity’s accounts, like deduplicated accounts, in order to identify them as part of the same identity. Also, it supports the re-evaluation process of the template-based unique identifier, which could be needed when unfrequent changes happen, like a surname change, that makes the previous value unsuitable.
 
-https://github.com/sailpoint-oss/colab-saas-conn-identity-fusion/assets/64795004/0533792f-7f12-42a9-93d2-bb519260f0b4
-
 <p align=center>Simple process to re-evaluate unique identifier</p>
 
 Another frequent challenge is the deduplication of identities. When identity data comes from multiple sources, chances are data is not 100% accurate and our typical correlation process, based on an identical match on various attributes, could fail and generate duplicated identities. This is very problematic and it requires manual intervention for manual correlation or identity data correction, when possible. The connector helps with this process by submitting new accounts to a manual review based on a similarity check. If the account is considered similar to one or more identities, a form is sent to the configured reviewers. They can decide whether it’s a new identity or it’s part of a similar identity. Other accounts are simply processed and generate a new identity, since there was no match and the connector’s source is authoritative. As an added bonus, conventional correlation can still be used from the original account sources, which makes the process very flexible.
@@ -234,6 +232,46 @@ Correlation configuration depends on the situation:
 ### [Account aggregation process diagram](https://miro.com/app/board/uXjVNgEpRGs=/)
 
 <!-- CONTRIBUTING -->
+
+## Getting Started with the Identity Fusion Connector (First time setup)
+
+In order to use the Identity Fusion Connector, there are certain steps you must go through initially.
+
+### Prerequisites
+
+ - Ensure the sources you plan to aggregate with are already configured and you have performed an aggregation with them
+
+### Configure the connector
+
+Enter in the URLs and Client id / secret for your tenant:
+
+![Getting Started 1](assets/images/getting-started-1.png)
+
+Enter the source name for the initial (primary) source that you will be connecting to. This source will be the source that builds the baseline of all the identities that the other secondary sources will be compared to:
+
+![Primary Source Config](assets/images/getting-started-2.png)
+
+Complete the configuration for the Unique ID. In most cases you will have a configuration similiar to what is shown here, but the velocity template might be different. 
+
+![Unique ID Config](assets/images/getting-started-3.png)
+
+Setup the merging/mapping configuration. This will depend heavily on the source attributes and which ones will make sense to compare and map. In the example below, there are two email fields from the two sources I plan on mapping in, two departments fields, and a display name field. Only the email and displayName fields are used for duplication detection, while the departement fields are concatinated into one so you can easily see the departments coming from both sources.
+
+![Merging/Mapping Config](assets/images/getting-started-4.png)
+
+Now you can run the "discover schema" for the fusion connector to pull in the additional schema attributes for the primary source. You can see below how some additional attributes have been discovered after running the "Discover Schema" task:
+
+![Discover Schema](assets/images/getting-started-5.png)
+
+Now perform an entitlement aggregation:
+
+![Entitlement Aggregation](assets/images/getting-started-6.png)
+
+Now perform an account aggregation:
+
+![Account Aggregation](assets/images/getting-started-7.png)
+
+
 
 ## Contributing
 

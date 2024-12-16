@@ -243,27 +243,51 @@ In order to use the Identity Fusion Connector, there are certain steps you must 
 
 ### Configure the connector
 
+#### Configuring the authentication into the tennant
 Enter in the URLs and Client id / secret for your tenant:
 
 ![Getting Started 1](assets/images/getting-started-1.png)
 
+#### Configuring the primary source
 Enter the source name for the initial (primary) source that you will be connecting to. This source will be the source that builds the baseline of all the identities that the other secondary sources will be compared to:
 
 ![Primary Source Config](assets/images/getting-started-2.png)
 
-Complete the configuration for the Unique ID. In most cases you will have a configuration similiar to what is shown here, but the velocity template might be different. 
+#### Unique ID Configuration
+Complete the configuration for the Unique ID. In most cases you will have a configuration similiar to what is shown here, but the velocity template might be different. Make sure fields referenced in the velocity template exist in your sources or or listed below in the mapping configuration.
 
 ![Unique ID Config](assets/images/getting-started-3.png)
 
-Setup the merging/mapping configuration. This will depend heavily on the source attributes and which ones will make sense to compare and map. In the example below, there are two email fields from the two sources I plan on mapping in, two departments fields, and a display name field. Only the email and displayName fields are used for duplication detection, while the departement fields are concatinated into one so you can easily see the departments coming from both sources.
+#### Mapping Configuration
+Setup the merging/mapping configuration. This will depend heavily on the source attributes and which ones will make sense to compare and map. In the example below, there are two email fields from the two sources I plan on mapping in, two departments fields, and a display name field. Only the email and displayName fields are used for duplication detection, while the departement fields are concatinated into one so you can easily see the departments coming from both sources. You can also combine fields into one to use for the velocity template for unique ID configuration.
+
+You can set the score to take the overall for all attributes by checking the box "Use overall merging score for all attributes" If you don't have this checked, then you will need to assign a score for each attribute you want to use for merging and all the thresholds must be met from all individual attributes.
 
 ![Merging/Mapping Config](assets/images/getting-started-4.png)
 
+#### Discovering the Schema
 Now you can run the "discover schema" for the fusion connector to pull in the additional schema attributes for the primary source. You can see below how some additional attributes have been discovered after running the "Discover Schema" task:
 
 ![Discover Schema](assets/images/getting-started-5.png)
 
-Now perform an entitlement aggregation:
+#### Creating the Identity Profile
+Before doing the first aggregation, you first need to setup the Identity Profile for the fusion connector. 
+    1. Create a new identity profile for the fusion connector and set the mappings according to the fields the connector is creating.
+    2. There is a special transform created by the fusion connector that should be used to update the lifecycle state. This needs to be set in the "Lifecycle State" field mapping as shown below:
+
+![Account Aggregation](assets/images/getting-started-8.png)
+
+#### Creating Provisioning Plan
+
+In order for the transform to take effect, the "Staging" provisioning plan needs to be created. This will ensure when new accounts are created from the connector that they are immediatly created. Without this in place, accounts would need to be run through aggregation twice before they are created in ISC. 
+
+Create a Provisioning called "Staging" and the settings for previous accounts to "Configure Changes". Set the "Account Configuration Options" to "Enable Accounts" and set the source accounts to enable to the fusion connector. 
+
+![Provisioning Plan](assets/images/getting-started-9.png)
+
+#### Aggregate accounts and Entitlements
+
+Now go back to your source and perform an entitlement aggregation:
 
 ![Entitlement Aggregation](assets/images/getting-started-6.png)
 
@@ -271,6 +295,38 @@ Now perform an account aggregation:
 
 ![Account Aggregation](assets/images/getting-started-7.png)
 
+At this point you can now add additional sources that will be used to merge accounts using the fusion connect.
+
+#### Add additional sources
+
+You can add additional sources in the same manner you added the primary source. After you have added another source, make sure to run entitlement aggregation and discover the schema again.
+
+#### Creating Access Profiles
+
+First create a Fusion Report Access profile. This access profile will be requested whenever you want to display a report showing identities and their correlation with other identities in the system. The only thing to configure in the report is to add the "Fusion report" entitlement to the access profile.
+
+![Reports Access Profile](assets/images/getting-started-10.png)
+
+Next, add access profiles for any source using the fusion connector. Each source name will be listed with the text "reviewer" next to it for entitlements to add to the access profile. If someone has access with this entitlement, they will recieve notifications and emails when a potential duplicate identity is found for that source for them to review. An example of an access profile with two sources for the same access profile set is below
+
+![Source Reviewer Access Profile](assets/images/getting-started-11.png)
+
+
+## Generating a report
+
+If you want to generate a report to find any potential duplicate accounts prior to doing an aggregation, you can simply request access to the newly created reports access profile. Once the access is processed, you will receive an email showing any potential duplicates and the match.
+
+![Generating Report](assets/images/getting-started-12.png)
+
+### Generated report
+
+![Generated Report](assets/images/getting-started-13.png)
+
+## Navigating potential duplicates
+
+Whenever an aggregation event occurs on the fusion connector, it will compare all new accounts from all child sources to all identities in ISC. If any duplicates are found, a form is created and assigned to all reviewers for that source. You will have the chance to update attributes of the identity and also select if it is a new identity or a duplicate. Once the duplicate has been resolved, the account will be created during the next aggregation cycle. 
+
+![Duplicate Form](assets/images/getting-started-14.png)
 
 
 ## Contributing

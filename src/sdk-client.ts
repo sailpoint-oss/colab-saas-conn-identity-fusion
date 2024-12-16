@@ -44,6 +44,7 @@ import {
     UsageType,
     SourcesBetaApi,
     TaskManagementBetaApi,
+    TransformRead,
 } from 'sailpoint-api-client'
 import { URL } from 'url'
 import { logger } from '@sailpoint/connector-sdk'
@@ -477,13 +478,19 @@ export class SDKClient {
         return response.data
     }
 
-    // async getTransformByName(name: string): Promise<Transform | undefined> {
-    //     const api = new TransformsApi(this.config)
+    async getTransformByName(name: string): Promise<TransformRead | undefined> {
+        const api = new TransformsApi(this.config)
 
-    //     const response = await api.listTransforms()
+        const response = await api.listTransforms()
 
-    //     return response.data.find((x) => x.name === name)
-    // }
+        return response.data.find((x) => x.name === name)
+    }
+
+    async updateTransform(transform: Transform, id: string): Promise<Transform> {
+        const api = new TransformsApi(this.config)
+        const response = await api.updateTransform({ id: id, transform })
+        return response.data
+    }
 
     // async testTransform(
     //     identityId: string,

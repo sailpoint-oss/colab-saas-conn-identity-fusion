@@ -1095,6 +1095,8 @@ export class ContextHelper {
 
     private async createTransform(name: string,  sourceIdentityAttribute: SourceIdentityAttribute[] ): Promise<boolean> {
         
+        const oldTransform = await this.client.getTransformByName(name)
+
         const attributeValues: any = []
         for (const sourceIdentity of sourceIdentityAttribute) {
             attributeValues.push({
@@ -1122,8 +1124,18 @@ export class ContextHelper {
             "internal": false
         }
 
+        try {
+            if (oldTransform) {
+                await this.client.updateTransform(oldTransform, oldTransform.id)
+            } else {
+                await this.client.createTransform(transformDef)
+            }
+        } catch (error) {
+            logger.error(error)
+            return false
+        }
 
-        const transform = await this.client.createTransform(transformDef)
+        
         return true
     }
 

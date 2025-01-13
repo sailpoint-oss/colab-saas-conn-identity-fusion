@@ -62,7 +62,7 @@ jobs:
 
       - name: Download sailpoint-cli package
         run: |
-          wget https://github.com/sailpoint-oss/sailpoint-cli/releases/download/2.0/sail_${{ env.CLI_VERSION }}_linux_amd64.deb
+          wget https://github.com/sailpoint-oss/sailpoint-cli/releases/download/${{ env.CLI_VERSION }}/sail_${{ env.CLI_VERSION }}_linux_amd64.deb
 
       - name: Install sailpoint-cli
         run: |

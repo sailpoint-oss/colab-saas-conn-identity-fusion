@@ -1,0 +1,83 @@
+name: "build and push connector to S3 and dev tennant"
+
+env: 
+  FUSION_BASE_URL: ${{ secrets.SDK_TEST_TENANT_BASE_URL }}
+  FUSION_CLIENT_ID: ${{ secrets.SDK_TEST_TENANT_CLIENT_ID }}
+  FUSION_CLIENT_SECRET: ${{ secrets.SDK_TEST_TENANT_CLIENT_SECRET }}
+  CONNECTOR_ALIAS: "fusion-connector-v1"
+  CLI_VERSION: "2.1.9"
+  
+
+on:
+  push:
+    branches:
+      - main  # assuming you're using the 'main' branch; adjust if you use 'master' or another
+    paths:
+      - 'package.json'
+  workflow_dispatch:
+
+
+jobs:
+  build_connector:
+    name: Build the connector
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout the master branch request to run rsync
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+      # Checkout the master branch request to run rsync
+      - name: Checkout PR branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      # - name: Check version change
+      #   run: |
+      #     VERSION_CHANGED=$(git diff HEAD^ HEAD -- "package.json" | grep '\"version\"')
+      #     if [ -z "$VERSION_CHANGED" ]; then
+      #       echo "package.json version has not changed."
+      #       exit 1
+      #     fi
+      - name: Run npm install and build connector
+        id: buildConnector
+        run: |
+          npm install
+          npm run pack-zip
+      - name: Extract version from package.json
+        run: |
+          echo "PACKAGE_VERSION=$(jq -r .version package.json)" >> $GITHUB_ENV
+          echo "CONNECTOR_NAME=$(jq -r .name package.json)" >> $GITHUB_ENV
+
+      - name: Get Commits since last Release
+        id: changes
+        uses: simbo/changes-since-last-release-action@v1
+
+      - name: Download sailpoint-cli package
+        run: |
+          wget https://github.com/sailpoint-oss/sailpoint-cli/releases/download/2.0/sail_${{ env.CLI_VERSION }}_linux_amd64.deb
+
+      - name: Install sailpoint-cli
+        run: |
+          sudo dpkg -i sail_${{ env.CLI_VERSION }}_linux_amd64.deb
+
+      - name: Use sailpoint-cli to upload new connector
+        run: |
+          sail conn upload -c "${{ env.CONNECTOR_ALIAS }}" -f ./dist/${{ env.CONNECTOR_NAME }}-${{ env.PACKAGE_VERSION }}.zip
+
+
+      # - name: Create GitHub release
+      #   run: |
+      #     gh release create v${{ env.PACKAGE_VERSION }} \
+      #       --title "Release v${{ env.PACKAGE_VERSION }}" \
+      #       --notes "${{ steps.changes.outputs.log }}" \
+      #       --target main \
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # - name: Upload file to release
+      #   run: |
+      #     gh release upload v${{ env.PACKAGE_VERSION }} ./dist/${{ env.CONNECTOR_NAME }}-${{ env.PACKAGE_VERSION }}.zip --clobber
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

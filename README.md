@@ -26,203 +26,248 @@
 -   0.0.2 (2024-04-02):
     -   Initial public release
 
-## Introduction
+## Identity Fusion SaaS Connector 
 
-This is a concept custom SaaS connector with two main goals in mind:
+There are two common challenges Identity Security Cloud (ISC) admins and source admins face when they aggregate identity data: 
 
--   Creating unique identifiers for identities
+1. ISC doesn't have a built-in mechanism to generate unique identifiers for identities and handle value collision. There are ways to resolve this issue, but they are complex and may require the use of external systems, which you must then maintain. 
 
--   Helping with the deduplication process of identities from multiple sources
+2. ISC's typical correlation process, which involves finding an identical match based on various identity attributes, can fail and generate duplicated identities when the data isn't 100% accurate, which isn't uncommon. 
 
-These two items are a recurring theme in POCs and of special importance in particular contexts like education.
+The Identity Fusion SaaS Connector solves both these problems: 
 
-ISC doesn’t have a built-in mechanism to generate unique identifiers based on a template with value collision handling. There is an account attribute rule that does this but it’s not applicable to identities. In combination with transforms, this has been traditionally used to generate such unique identifiers by provisioning an account to a transactional target system, like a database. This approach, while valid, requires an external system to maintain. Also, creating the initial value is often a cumbersome process that involves deeply nested transforms to normalize strings, remove spaces, trim values, change case, etc.
+- To solve the first, the connector provides an identifer template you can use to configure the generation of unique identifiers and handle value collision. 
 
-This connector aims to simplify that by adding the typical string manipulation options readily available as configuration options. The identifier template is based on Velocity for flexibility and standardization, including the placement of the disambiguation counter.
+- To solve the second, the connector provides a duplication check you can use to review identities and prevent their duplication in ISC. The connector also provides an account merging configuration that controls how it merges account attributes from different schemas and maps the account attributes to identity attributes. 
+
+You can use these features independently or together. 
+
+## Unique ID Configuration 
+
+The fusion connector provides a template you can use to configure the generation of unique identifiers. This template offers you a simple way to configure typical string manipulation options, like normalizing special characters and removing spaces, within ISC. This template is based on Velocity for flexibility and standardization, including the placement of the disambiguation counter. 
 
 ![Unique identifier configuration options](assets/images/unique-id-configuration.png)
 
-<p align=center>Unique identifier configuration options</p>
-
-In addition to the template-based unique identifier, the connector assigns an immutable UUID to the account. This identifier can be synchronised to all identity’s accounts, like deduplicated accounts, in order to identify them as part of the same identity. Also, it supports the re-evaluation process of the template-based unique identifier, which could be needed when unfrequent changes happen, like a surname change, that makes the previous value unsuitable.
+In addition to the template-based unique identifier, the connector assigns an immutable Universally Unique Identifier (UUID) to the account, which you can synchronize with all the identity's accounts. 
 
 https://github.com/sailpoint-oss/colab-saas-conn-identity-fusion/assets/64795004/0533792f-7f12-42a9-93d2-bb519260f0b4
 
-<p align=center>Simple process to re-evaluate unique identifier</p>
+This UUID also supports reevaluation, which may be necessary when infrequent changes occur, such as a surname change, which would make the previous value incorrect.
 
-Another frequent challenge is the deduplication of identities. When identity data comes from multiple sources, chances are data is not 100% accurate and our typical correlation process, based on an identical match on various attributes, could fail and generate duplicated identities. This is very problematic and it requires manual intervention for manual correlation or identity data correction, when possible. The connector helps with this process by submitting new accounts to a manual review based on a similarity check. If the account is considered similar to one or more identities, a form is sent to the configured reviewers. They can decide whether it’s a new identity or it’s part of a similar identity. Other accounts are simply processed and generate a new identity, since there was no match and the connector’s source is authoritative. As an added bonus, conventional correlation can still be used from the original account sources, which makes the process very flexible.
+## Deduplication Configuration 
+
+The fusion connector provides a similarity check that prevents the duplication of identities. 
 
 ![Deduplication configuration](assets/images/deduplication-configuration.png)
 
-<p align=center>Deduplication configuration</p>
+The connector checks new accounts for similarity and if it determines the accounts are similar to one or more identities (based on a minimum similarity score), it submits the accounts for manual review to configured reviewers. The fusion connector's source is authoritative, so when it processes accounts that don't have similar existing identities, it generates new ones. 
 
-Both features can be used hand by hand or separately. Unique identifier generation can be used without deduplication, as an authoritative source or not. When using deduplication, the connector’s source must be configured as an authoritative source as it needs to control the inflow of accounts. The connector generates proxy accounts which are the result of merging accounts from multiple sources. Since sources may present different account schemas, the connector can discover the account schema as the result of combining the configured sources' schemas. Account merging configuration controls how account attributes map to identity attributes, for comparison, and how to deal with accounts contributing to the same attribute.
+In addition to this deduplication process, you can still use conventional correlation from the original account sources. This makes the process very flexible. 
+
+## Base Configuration
+
+When the fusion connector is deduplicating identities, it generates proxy accounts that result from merging account data from multiple sources. Sources may present different account schemas, so the connector can discover the account schema that results from combining the configured sources' schemas. The account merging configuration controls how account attributes map to identity attributes for comparison and also how to handle multiple accounts contributing to the same attribute. 
 
 ![Base configuration](assets/images/base-configuration.png)
 
-<p align=center>Base configuration</p>
+Because the connector is comparing new accounts from multiple sources with existing identities, you must map account attributes to identity attributes, which results in a combined schema from all configured sources, as well as a series of normalized attributes. 
 
-In the process of checking identity duplicates, account data merging and normalization must happen. First off, we’re comparing new accounts to existing identities, so we need to map which account attributes map to which identity attributes. This results in having a combined schema from all configured sources in addition to a series of normalised attributes. When multiple source accounts contribute to a proxy account, multiple values for the same attribute may be present. The connector allows to keep all values or just one. Keeping all values for an attribute greatly helps in use cases where multiple accounts can contribute to an identity attribute, like multiple job descriptions for the same person, that can be used for role assignments or searches.
+When multiple source accounts contribute to a proxy account, there may be multiple values for the same attribute. The connector allows you to keep all values or only one. 
 
 ![Configuration can be general or per attribute](assets/images/attribute-configuration.png)
 
-<p align=center>Configuration can be general or per attribute</p>
+Keeping all values for an attribute can be useful in situations where multiple accounts can contribute to an identity attribute, like multiple job descriptions for the same person. You can then use these values in role assignments or searches. 
 
-![The result is both values concatenated with square brackets](assets/images/attribute-merging.png)
+![The result is both values concatenated with square brackets](assets/images/attribute-merging.png) 
 
-<p align=center>The result is both values concatenated with square brackets</p>
+## Connector modes
 
-## How does the connector work?
+When you're configuring the fusion connector, you must first decide whether you want it to be an authoritative or regular source: 
 
-The connector can be configured in two different modes:
+- **Authoritative source**: An authoritative source is an organization's primary source, providing a complete list of its identities, like an HR application or Active Directory. To use deduplication, you must configure the fusion connector as an authoritative source because it's reading all the identities from a list of sources that may otherwise be authoritative sources themselves. When the connector merges account data, it creates proxy accounts, so the original accounts are not necessary to build the identity profile. The proxy accounts directly provide all account attribute data. 
 
--   **Authoritative source**: in order to use deduplication, the connector must be configured as an authoritative source. The source is configured to read from a list of sources that, in other circumstances, would be configured as authoritative sources themselves. The connector creates proxy accounts as a result of the merging process so original accounts are not really needed to build the identity profile. Proxy accounts provide all account attribute data directly.
+- **Regular source**: If you only need to generate unique identifiers and you aren't worried about duplication, you can configure the fusion connector as a regular source. When you're using the connector as a regular source, the connector uses the identifiers associated with the identity profiles linked to the sources included in the connector's configuration. When you use the connector as a regular source, you must ensure the following: 
 
--   **Regular source**: when only generation of unique identifiers is needed, the connector can be configured as a regular source and the identifiers used on those identity profiles linked to sources included in the configuration. When using this mode, it’s necessary to ensure that:
+    - All sources for the identity profiles you want to generate unique identifiers for are included in the list.
 
-    -   All sources for the identity profiles we want to generate unique identifiers for are included in the list.
+    - The 'Include existing identities' option is enabled.
 
-    -   Include existing identities is enabled.
+    - The unique ID scope is set to 'Source'.
 
-    -   Unique ID scope is set to source.
+    - The attributes the Velocity template is using either exist in the account schema or are mapped identity attributes. 
 
-    -   The attributes used in the Velocity template exist in the account schema or they’re a mapped identity attribute.
+Whether you use the fusion connector as an authoritative or regular source, the connector generates proxy accounts based on the configured sources and the the connector's other configuration options. These proxy accounts are the result of merging all source account attributes, normalized attributes based on the connector's configuration, and this set of mandatory attributes: 
 
-In both cases, proxy accounts are generated based on sources configured and other configuration options. Proxy accounts are simply the result of putting together all source accounts attributes, normalised attributes as per configuration and a set of mandatory attributes as described below:
+- **id**: The template-based unique identifier.
 
--   **id**: template-based unique ID.
+- **uuid**: The immutable Universally Unique Identifier (UUID).
 
--   **uuid**: immutable UUID.
+- **accounts**: The list of source accounts IDs linked to the proxy account.
 
--   **accounts**: list of source accounts IDs linked to the account.
+- **history**: The chronological history of operations performed on the account.
 
--   **history**: chronological history of the operations performed on the account.
+- **status**: The list of entitlements used as tags to identify the account's origin. (?)
 
--   **status**: list of entitlements used as tags to identify the origin of the account.
-
--   **reviews**: list of pending form instances a reviewer must attend to.
+- **reviews**: The list of pending form instances a reviewer must attend to.
 
 ![Account attributes](assets/images/account-attributes.png)
 
-<p align=center>Account attributes</p>
+## Identifier creation 
 
-The connector main processing happens on account aggregation. The aggregation context prevents having race conditions when creating the identifiers. The connector reads previously aggregated accounts and compares the current list to the existing source accounts to detect accounts not processed yet. It is also important to note that each run starts by processing completed form instances generated by previous runs, since these decisions may create a new account or update an existing one. On each run, proxy accounts are updated with deduplication actions data and new source account data.
+The fusion connector's identifier creation process occurs during account aggregation. When the connector creates the identifiers, the aggregation context prevents race conditions, errors that occur when multiple processes try to access the same resource at the same time. The connector reads previously aggregated accounts and compares these existing accounts to the current list to detect accounts that haven't been processed yet. 
 
-When a potential match is found, based on an attribute similarity check, the connector generates form instances for reviewers to check. The first reviewer to complete the form decides what to do with that account: create a new one or link it to an existing identity.
+Because the connector is deciding whether to create new accounts or update existing ones, each run starts by processing completed form instances generated by previous runs. With each run, the connector updates proxy accounts with data resulting from deduplication actions, as well as new sourec account data. 
+
+## Deduplication 
+
+When the fusion connector finds a potential match, based on an attribute similarity check, it generates form instances for reviewers to check. ISC sends the reviewer an email, prompting him or her to check for a potential identity merge. 
 
 ![Email is sent to reviewer](assets/images/email.png)
 
-<p align=center>Email is sent to reviewer</p>
+The first reviewer to complete the form decides what to do with the account: create a new identity or link it to an existing one. 
 
 ![Deduplication form](assets/images/form.png)
 
-<p align=center>Deduplication form</p>
+Once the reviewer makes a decision, the connector either correlates the new account with an existing identity or creates a new one, and it updates the account's history accordingly. 
 
 ![New account is correlated and history updated accordingly](assets/images/new-account.png)
 
-<p align=center>New account is correlated and history updated accordingly</p>
+## Account aggregation 
 
-When running account aggregation for the first time, an account baseline must be created. This doesn’t affect the creation of unique identifiers, which are always unique regardless of the batch they were created on. However, for deduplication, we must have a set of identities to compare to. That’s the baseline, and it’s meant to be created out of a curated list of accounts. More sources can be later added to the configuration and they’ll be compared to that baseline.
+When you run an account aggregation for the first time, the fusion connector creates an account baseline. This baseline doesn't affect the creation of unique identifiers, which are always unique regardless of the batch they're created on, but it is essential for deduplication, which requires a list of identities to compare incoming account data to. You can add more sources to the configuration, and account data from those sources will be compared with this baseline. 
 
-Newly created proxy accounts are returned as disabled. This is intentional and somewhat necessary if we want them to be quickly correlated to the source account. The reason is that when configured in authoritative source mode, a new account creates a new identity. Since the identity does not exist yet, it cannot be correlated to the source account. One should configure the identity profile so it automatically enables proxy accounts, which triggers such correlation. Alternatively, the next account aggregation will run pending account correlations.
+When the connector creates new proxy accounts, it returns them as 'disabled'. They're disabled because the connector is an authoritative source, so it creates new identities for new accounts, which means that the identities don't exist yet and cannot yet be correlated. Disabling allows you to quickly correlate the proxy accounts with their source accounts. The best practice is to configure the identity profile so it automatically enables proxy accounts, triggering correlation with their source accounts. Alternatively, the next account aggregation will run pending account correlations. 
 
-Account disable triggers template-based unique identifier re-evaluation. The account can be then re-enabled or re-aggregated so it appears enabled, but it’s not really important. Note UUID must be configured as account native identity and name to allow for this change. Native identity cannot be changed so UUID is perfectly fine for that. Account name must not change if we want to keep the identity, therefore UUID is also a good fit.
+Disabling an account triggers a template-based unique identifier reevaluation. It is recommended that you configure UUID as the account's native identity and name. UUID works well as a native identity because native identities cannot be changed, and it works well as a name because the account name must not change if you want to keep the identity. 
 
-Entitlement aggregation just populates all different statuses with descriptions.
+:::note
+
+You can reenable or reaggregate a disabled account so it appears enabled. 
+
+:::
+
+## Entitlement aggregation
+
+When you run an entitlement aggregation, the fusion connector connector populates all the different statuses with descriptions.
 
 ![Entitlements are simply tags for accounts](assets/images/entitlements.png)
 
-<p align=center>Entitlements are simply tags for accounts</p>
+The connector supports discovering the schema. The connector builds this schema by merging the multiple configured sources' schemas, normalized attributes based on the configuration, and some predefined attributes. Depending on the attribute merge configuration, the connector may return some attributes as multi-valued entitlements. If you are changing the attribute merge settings and your changes may result in changes to multi-valued attributes after the first schema discovery, you must review your schema and change it accordingly (ISC doesn't do this for you). You can also remove optional schema attributes to prevent the connector from fetching undesired data. 
 
-The connector supports discovering the schema. The schema is built by merging the configured sources’s schemas, normalised attributes as per configuration and some predefined attributes. Depending on the attribute merge configuration, some attributes may be returned as multi-valued entitlements. When changing attribute merge settings that may result in multi-valued attributes changes after the first discovery, please review your schema and change it accordingly, since ISC doesn’t. It’s also worth noting that optional schema attributes can be removed to prevent undesired data to be fetched.
+## API configuration 
 
-### Configuration options
+To start configuring the fusion connector, you must first configure the connector to be able to use the APIs. 
 
 ![API configuration](assets/images/api-configuration.png)
 
--   **IdentityNow API URL**: API url of the current tenant, for loopback connection.
+- **IdentityNow API URL**: The current tenant's API URL. The connector uses this for loopback connection. 
 
--   **Personal Access Token ID**: Personal Access Token ID with scopes:all scope.
+- **Personal Access Token ID**: The personal access token ID with the 'scopes:all' scope. 
 
--   **Personal Access Token secret**: Personal Access Token secret.
+- **Personal Access Token Secret**: The personal access token's secret. 
+
+All these values are required. 
+
+## Base configuration 
+
+The next step to configuring the fusion connector is setting up the base configuration. This base configuration controls details like which sources the connector should read and how to handle the account data it finds. 
 
 ![Base configuration](assets/images/base-configuration2.png)
 
--   **List of account sources to read from**: list of authoritative sources to read from.
+- **List of account sources to read from**: The list of authoritative sources to read from.
 
--   **Default attribute merge from multiple sources**
+- **Default attribute merge from multiple sources**: This determines how the connector handles the account data it finds. 
 
-    -   **First found**: use first value found for account, based on the source order set above, to populate attribute.
+    -   **First found**: The connector uses the first value found for an account, based on the set source order, to populate the account attribute.
 
-    -   **Make multi-valued entitlement**: create a list of unique values from all accounts contributing to the attribute.
+    -   **Make multi-valued entitlement**: The connector creates a list of unique values from all accounts contributing to the account attribute.
 
-    -   **Concatenate values**: create a concatenated string of unique values, enclosed in square brackets, from all accounts contributing to the attribute.
+    -   **Concatenate values**: The connector creates a concatenated string of unique values, enclosed in square brackets, from all accounts contributing to the same account attribute.
 
--   **Include existing identities?**: whether to include existing identities from the source list. When not included, correlated accounts from the source list are ignored. When included, they’re processed too but the identity’s uid is considered its unique ID.
+- **Include existing identities?**: This determines whether the connector includes existing identities from the source list. If the connector doesn't include existing identities, it ignores correlated accounts from the source list. When the connector includes them, it processes the existing identities too, but those identities' UIDs are considered their unique IDs. 
 
--   **Delete accounts with no authoritative accounts left?**: whether to delete the proxy account when there are no linked accounts left.
+- **Delete accounts with no authoritative accounts left?**: This determines whether the connector deletes the proxy account when there are no linked accounts left. 
 
--   **Reset accounts?**: convenience option to reset current accounts from the source.
+- **Reset accounts?**: The convenience option to reset current accounts from the source.
+
+## Unique ID configuration 
+
+The next step to configuring the fusion connector is setting up its unique ID configuration, which determines how the connector generates unique IDs. 
 
 ![UniqueID configuration](assets/images/unique-id-configuration2.png)
 
--   **Unique ID scope**
+- **Unique ID scope**: These options determine whether the connector includes only source accounts or includes both source accounts and all identities when it calculates unique identifiers. 
 
-    -   **Source**: only consider source accounts when calculating unique identifiers.
+    - **Source**: The connector only consider source accounts when it calculates unique identifiers.
 
-    -   **Platform**: consider both source accounts IDs and all identities UIDs when calculating unique identifiers.
+    - **Platform**: The connector considers both source accounts IDs and all identities' UIDs when it calculates unique identifiers.
 
--   **Apache Velocity template**: template to generate unique identifiers. Apache Velocity context is based on the account attributes. It is best to use normalised attributes, defined in the next section.
+- **Apache Velocity template**: The connector uses this template to generate unique identifiers. The Apache Velocity context is based on the account attributes. It is best to use normalized attributes, defined in the next section.
 
--   **Normalize special characters?**: remove special characters and quotes.
+- **Normalize special characters?**: Remove special characters and quotes.
 
--   **Maximum counter digits**: zero-based padding added to disambiguation counter.
+- **Maximum counter digits**: Zero-based padding added to disambiguation counter.
 
--   **Case selection**
+- **Case selection**: These options control how the connector handles casing differences. 
 
-    -   **Do not change**: do nothing.
+    - **Do not change**: Do nothing.
 
-    -   **Lower case**: change string to lower case.
+    - **Lower case**: Change the string to lower case.
 
-    -   **Upper case**: change string to upper case.
+    - **Upper case**: Change the string to upper case.
+
+## Deduplication Configuration
 
 ![Deduplication configuration](assets/images/deduplication-configuration2.png)
 
--   **List of identity attributes to include in form**: list of identity attributes to include in form.
+If you want to use deduplication, the next step to configuring the fusion connector is setting up the deduplication check and review process. 
 
--   **Manual reviewer identity or governance group**: UID of reviewer or governance group name.
+-   **List of identity attributes to include in form**: The list of identity attributes to include in the deduplication form.
 
--   **Manual review expiration days**: number of days after the form instance expires.
+-   **Manual reviewer identity or governance group**: The UID of the reviewer or the governance group name.
 
--   **Minimum similarity score [0-100] (LIG3 similarity function \* 100 from Levenshtein distance)**: similarity score to apply attribute by attribute configured below. 0 is totally different and 100 is exactly the same. More information here.
+-   **Manual review expiration days**: The number of days until the form instance expires.
+
+-   **Minimum similarity score [0-100] (LIG3 similarity function \* 100 from Levenshtein distance)**: The similarity score to apply attribute by attribute. 0 is totally different and 100 is exactly the same. 
+
+## Attribute Mapping 
+
+When you aggregate account data from the different sources, they will often be stored in different formats than your identity data in ISC. To standardize the attribute data between identities and their correlated source accounts, you must configure how the connector maps account attributes with identity attributes. 
 
 ![Attribute mapping](assets/images/attribute-mapping.png)
 
--   **Identity attribute**: identity attribute to compare to. This attribute is also added to the proxy account schema and populated by the contents from the account attributes below.
+-   **Identity attribute**: Identity attribute to compare the account attribute with. The connector also adds this attribute to the proxy account schema and populates it with the account attributes. 
 
--   **Account attributes**: account attributes to compare to the identity attribute above.
+-   **Account attributes**: Account attributes to compare with the identity attribute.
 
--   **Use mapping for unique ID generation only**: when checked, account attribute mapping occurs but this configuration is not used form similarity matching.
+-   **Use mapping for unique ID generation only**: When this option is checked, the account attribute mapping occurs and the connector uses mapping to generate unique IDs, but it does not use this configuration for similarity matching.
+
+## Attribute Merging 
+
+With the fusion connector, you can merge account attributes from different sources. You can configure how the connector merges account attributes in this section. 
 
 ![Attribute merging](assets/images/attribute-merging2.png)
 
--   **First found**: use first value found for account, based on the source order set above, to populate attribute.
+-   **First found**: Use the first value found for the account, based on the set source order, to populate the attribute.
 
--   **Make multi-valued entitlement**: create a list of unique values from all accounts contributing to the attribute.
+-   **Make multi-valued entitlement**: Create a list of unique values from all accounts contributing to the attribute.
 
--   **Concatenate values**: create a concatenated string of unique values, enclosed in square brackets, from all accounts contributing to the attribute.
+-   **Concatenate values**: Create a concatenated string of unique values, enclosed in square brackets, from all accounts contributing to the attribute.
 
--   **Source**: name of the only source contributing to this attribute.
+-   **Source**: The name of the only source contributing to the attribute.
 
 ### Correlation
 
-Correlation configuration depends on the situation:
+The fusion connector's correlation configuration depends on whether you are using the connector as an authoritative or regular source: 
 
--   _Authoritative source_: reviewer accounts always get the identity’s UID as unique identifier. Therefore, when using deduplication, correlation from identity’s UID to account’s id must be set.
+- **Authoritative source**: When you use the connector as an authoritative source, reviewer accounts always get the identity’s UID as unique identifier. Therefore, when you use deduplication, you must set correlation between an identity’s UID and the account’s ID.
 
--   _Regular source_: in order for the proxy accounts to directly correlate to the corresponding identities, we need to identify those account attributes we can match with identity attributes. This configuration depends on the actual data and it’s no different to any other source account correlation.
+- **Regular source**: To correlate proxy accounts directly with corresponding identities, you must identify the account attributes the connector can match with identity attributes. This configuration depends on the actual data, and it's the same as any other source account correlation. 
 
-### [Account aggregation process diagram](https://miro.com/app/board/uXjVNgEpRGs=/)
+
+## Account Aggregation Process 
+
+You can find a diagram of the fusion connector's aggregation process here: [Account aggregation process diagram](https://miro.com/app/board/uXjVNgEpRGs=/)
 
 <!-- CONTRIBUTING -->
 
@@ -233,11 +278,11 @@ Contributions are what make the open source community such an amazing place to l
 If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag `enhancement`.
 Don't forget to give the project a star! Thanks again!
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+1. Fork the Project.
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`).
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`).
+4. Push to the Branch (`git push origin feature/AmazingFeature`).
+5. Open a Pull Request.
 
 <!-- LICENSE -->
 

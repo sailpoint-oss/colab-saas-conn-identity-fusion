@@ -214,7 +214,7 @@ The next step to configuring the fusion connector is setting up its unique ID co
 
     - **Upper case**: Change the string to upper case.
 
-## Deduplication Configuration
+## Deduplication configuration
 
 ![Deduplication configuration](assets/images/deduplication-configuration2.png)
 
@@ -228,7 +228,7 @@ If you want to use deduplication, the next step to configuring the fusion connec
 
 -   **Minimum similarity score [0-100] (LIG3 similarity function \* 100 from Levenshtein distance)**: The similarity score to apply attribute by attribute. 0 is totally different and 100 is exactly the same. 
 
-## Attribute Mapping 
+## Attribute mapping 
 
 When you aggregate account data from the different sources, they will often be stored in different formats than your identity data in ISC. To standardize the attribute data between identities and their correlated source accounts, you must configure how the connector maps account attributes with identity attributes. 
 
@@ -240,7 +240,7 @@ When you aggregate account data from the different sources, they will often be s
 
 -   **Use mapping for unique ID generation only**: When this option is checked, the account attribute mapping occurs and the connector uses mapping to generate unique IDs, but it does not use this configuration for similarity matching.
 
-## Attribute Merging 
+## Attribute merging 
 
 With the fusion connector, you can merge account attributes from different sources. You can configure how the connector merges account attributes in this section. 
 
@@ -262,8 +262,7 @@ The fusion connector's correlation configuration depends on whether you are usin
 
 - **Regular source**: To correlate proxy accounts directly with corresponding identities, you must identify the account attributes the connector can match with identity attributes. This configuration depends on the actual data, and it's the same as any other source account correlation. 
 
-
-## Account Aggregation Process 
+## Account aggregation process 
 
 You can find a diagram of the fusion connector's aggregation process here: [Account aggregation process diagram](https://miro.com/app/board/uXjVNgEpRGs=/)
 

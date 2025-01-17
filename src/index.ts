@@ -14,11 +14,18 @@ import {
     StdTestConnectionHandler,
     createConnector,
     logger,
-    readConfig,
 } from '@sailpoint/connector-sdk'
 import { Account, IdentityDocument } from 'sailpoint-api-client'
 import { EditEmail, ReviewEmail } from './model/email'
-import { buildReviewFromFormInstance, datedMessage, getFormValue, opLog, deleteArrayItem } from './utils'
+import {
+    buildReviewFromFormInstance,
+    datedMessage,
+    getFormValue,
+    opLog,
+    deleteArrayItem,
+    pushNewItem,
+    safeReadConfig,
+} from './utils'
 
 import { ContextHelper } from './contextHelper'
 import { PROCESSINGWAIT } from './constants'
@@ -27,7 +34,7 @@ import { Config } from './model/config'
 
 // Connector must be exported as module property named connector
 export const connector = async () => {
-    const config: Config = await readConfig()
+    const config: Config = await safeReadConfig()
     //==============================================================================================================
 
     //TODO improve
@@ -106,7 +113,7 @@ export const connector = async () => {
                                         const attributes = currentAccount.attributes!
                                         attributes.accounts.push(account)
                                         attributes.history.push(msg)
-                                        attributes.statuses.push('manual')
+                                        pushNewItem('manual', attributes.statuses)
                                         deleteArrayItem(attributes!.statuses, 'edited')
                                     } else {
                                         const msg = `Correlating ${uncorrelatedAccount.name} account to non-Fusion identity ${identityMatch.displayName}`
@@ -283,7 +290,7 @@ export const connector = async () => {
                             //TODO
                             ctx.processEditFormInstanceEdits(currentFormInstance, account)
                             const reviewer = await ctx.getIdentityById(currentFormInstance.recipients![0].id!)
-                            account.attributes!.statuses.push('edited')
+                            pushNewItem('edited', account.attributes!.statuses)
                             const message = datedMessage(`Edited by ${reviewer?.displayName}`)
                             account.attributes!.history.push(message)
 
@@ -406,14 +413,14 @@ export const connector = async () => {
                     const sourceName = ctx.getSourceNameByID(action)
                     const message = datedMessage(`Reviewer assigned for ${sourceName} source`, originAccount)
                     uniqueAccount.attributes!.actions.push(action)
-                    uniqueAccount.attributes!.statuses.push('reviewer')
+                    pushNewItem('reviewer', uniqueAccount.attributes!.statuses)
                     uniqueAccount.attributes!.history.push(message)
 
                     break
             }
         }
 
-        uniqueAccount!.attributes!.statuses = Array.from(new Set(uniqueAccount!.attributes!.statuses))
+        // uniqueAccount!.attributes!.statuses = Array.from(new Set(uniqueAccount!.attributes!.statuses))
         const account = (await ctx.refreshUniqueAccount(uniqueAccount!)) as UniqueAccount
 
         logger.info({ account })

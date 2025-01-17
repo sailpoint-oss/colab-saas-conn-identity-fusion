@@ -61,9 +61,12 @@ jobs:
         run: |
           sudo dpkg -i sail_${{ env.CLI_VERSION }}_linux_amd64.deb
 
-      - name: Use sailpoint-cli to upload new connector
+      - name: Use sailpoint-cli to create new connector
         run: |
           sail conn create "${{ env.STACK }}"
+          
+      - name: Use sailpoint-cli to upload new connector
+        run: |
           sail conn upload -c "${{ env.STACK }}" -f ./dist/${{ env.CONNECTOR_NAME }}-${{ env.PACKAGE_VERSION }}.zip
           if [ $? -ne 0 ]; then
             echo "sail conn upload command failed"

@@ -1,5 +1,11 @@
 name: PR infra destroy
 
+env: 
+  SAIL_BASE_URL: ${{ secrets.FUSION_TEST_TENANT_BASE_URL }}
+  SAIL_CLIENT_ID: ${{ secrets.FUSION_CLIENT_ID }}
+  SAIL_CLIENT_SECRET: ${{ secrets.FUSION_CLIENT_SECRET }}
+  CLI_VERSION: "2.1.9"
+  
 on:
   # Runs on pushes targeting the default branch
   pull_request:

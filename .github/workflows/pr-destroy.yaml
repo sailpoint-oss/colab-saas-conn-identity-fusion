@@ -1,0 +1,53 @@
+name: PR infra destroy
+
+on:
+  # Runs on pushes targeting the default branch
+  pull_request:
+    types: [closed]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+
+jobs:
+  build_connector:
+    name: Build the connector
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+      # Checkout the master branch request to run rsync
+      - name: Checkout PR branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Run npm install and build connector
+        id: buildConnector
+        run: |
+          npm install
+          npm run pack-zip
+      - name: Extract version from package.json
+        run: |
+          echo "PACKAGE_VERSION=$(jq -r .version package.json)" >> $GITHUB_ENV
+          echo "CONNECTOR_NAME=$(jq -r .name package.json)" >> $GITHUB_ENV
+      - name: set env vars
+        run: |
+          echo "STACK=${{ env.CONNECTOR_NAME }}-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+
+
+      - name: Download sailpoint-cli package
+        run: |
+          wget https://github.com/sailpoint-oss/sailpoint-cli/releases/download/${{ env.CLI_VERSION }}/sail_${{ env.CLI_VERSION }}_linux_amd64.deb
+
+      - name: Install sailpoint-cli
+        run: |
+          sudo dpkg -i sail_${{ env.CLI_VERSION }}_linux_amd64.deb
+
+      - name: Use sailpoint-cli to upload new connector
+        run: |
+          sail conn delete -c "${{ env.STACK }}"

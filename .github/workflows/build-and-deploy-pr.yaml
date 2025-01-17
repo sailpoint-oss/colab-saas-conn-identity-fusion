@@ -22,16 +22,6 @@ jobs:
     name: Build the connector
     runs-on: ubuntu-latest
     steps:
-      - name: set env vars
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "STACK=fusion-connector-v1" >> $GITHUB_ENV
-          elif [[ ${{ github.ref }} == refs/pull/* ]]; then
-            PR_NUMBER=$(echo ${{ github.ref }} | awk -F '/' '{print $3}')
-            echo "STACK=fusion-connector-$PR_NUMBER" >> $GITHUB_ENV
-          else
-            echo "STACK=fusion-connector-staging" >> $GITHUB_ENV
-          fi
       # Checkout the master branch request to run rsync
       - name: Set up Node
         uses: actions/setup-node@v3
@@ -53,7 +43,16 @@ jobs:
         run: |
           echo "PACKAGE_VERSION=$(jq -r .version package.json)" >> $GITHUB_ENV
           echo "CONNECTOR_NAME=$(jq -r .name package.json)" >> $GITHUB_ENV
-
+      - name: set env vars
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "STACK=${{ env.CONNECTOR_NAME }}" >> $GITHUB_ENV
+          elif [[ ${{ github.ref }} == refs/pull/* ]]; then
+            PR_NUMBER=$(echo ${{ github.ref }} | awk -F '/' '{print $3}')
+            echo "STACK=${{ env.CONNECTOR_NAME }}-$PR_NUMBER" >> $GITHUB_ENV
+          else
+            echo "STACK=${{ env.CONNECTOR_NAME }}-staging" >> $GITHUB_ENV
+          fi
       - name: Download sailpoint-cli package
         run: |
           wget https://github.com/sailpoint-oss/sailpoint-cli/releases/download/${{ env.CLI_VERSION }}/sail_${{ env.CLI_VERSION }}_linux_amd64.deb

@@ -64,14 +64,11 @@ jobs:
       - name: Use sailpoint-cli to create new connector
         run: |
           sail conn create "${{ env.STACK }}"
-          
+
       - name: Use sailpoint-cli to upload new connector
         run: |
+          set -e
           sail conn upload -c "${{ env.STACK }}" -f ./dist/${{ env.CONNECTOR_NAME }}-${{ env.PACKAGE_VERSION }}.zip
-          if [ $? -ne 0 ]; then
-            echo "sail conn upload command failed"
-            exit 1
-          fi
 
       # deploy connector if push to main branch
       - name: Check version change

@@ -10,8 +10,8 @@ on:
 
 
 jobs:
-  build_connector:
-    name: Build the connector
+  delete_connector:
+    name: Delete the connector
     runs-on: ubuntu-latest
     steps:
 
@@ -20,20 +20,14 @@ jobs:
         with:
           node-version: "18"
       # Checkout the master branch request to run rsync
-      - name: Checkout PR branch
+      - name: Checkout main branch
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.ref }}
+          ref: main
           fetch-depth: 0
 
-      - name: Run npm install and build connector
-        id: buildConnector
-        run: |
-          npm install
-          npm run pack-zip
       - name: Extract version from package.json
         run: |
-          echo "PACKAGE_VERSION=$(jq -r .version package.json)" >> $GITHUB_ENV
           echo "CONNECTOR_NAME=$(jq -r .name package.json)" >> $GITHUB_ENV
       - name: set env vars
         run: |

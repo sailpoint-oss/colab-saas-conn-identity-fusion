@@ -43,13 +43,7 @@ jobs:
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
-      # - name: Check version change
-      #   run: |
-      #     VERSION_CHANGED=$(git diff HEAD^ HEAD -- "package.json" | grep '\"version\"')
-      #     if [ -z "$VERSION_CHANGED" ]; then
-      #       echo "package.json version has not changed."
-      #       exit 1
-      #     fi
+
       - name: Run npm install and build connector
         id: buildConnector
         run: |
@@ -72,21 +66,37 @@ jobs:
         run: |
           sail conn create "${{ env.STACK }}"
           sail conn upload -c "${{ env.STACK }}" -f ./dist/${{ env.CONNECTOR_NAME }}-${{ env.PACKAGE_VERSION }}.zip
+          if [ $? -ne 0 ]; then
+            echo "sail conn upload command failed"
+            exit 1
+          fi
 
-      # - name: Get Commits since last Release
-      #   id: changes
-      #   uses: simbo/changes-since-last-release-action@v1
-      # - name: Create GitHub release
-      #   run: |
-      #     gh release create v${{ env.PACKAGE_VERSION }} \
-      #       --title "Release v${{ env.PACKAGE_VERSION }}" \
-      #       --notes "${{ steps.changes.outputs.log }}" \
-      #       --target main \
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # deploy connector if push to main branch
+      - name: Check version change
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          VERSION_CHANGED=$(git diff HEAD^ HEAD -- "package.json" | grep '\"version\"')
+          if [ -z "$VERSION_CHANGED" ]; then
+            echo "package.json version has not changed."
+            exit 1
+          fi
+      - name: Get Commits since last Release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: changes
+        uses: simbo/changes-since-last-release-action@v1
+      - name: Create GitHub release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          gh release create v${{ env.PACKAGE_VERSION }} \
+            --title "Release v${{ env.PACKAGE_VERSION }}" \
+            --notes "${{ steps.changes.outputs.log }}" \
+            --target main \
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # - name: Upload file to release
-      #   run: |
-      #     gh release upload v${{ env.PACKAGE_VERSION }} ./dist/${{ env.CONNECTOR_NAME }}-${{ env.PACKAGE_VERSION }}.zip --clobber
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload file to release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          gh release upload v${{ env.PACKAGE_VERSION }} ./dist/${{ env.CONNECTOR_NAME }}-${{ env.PACKAGE_VERSION }}.zip --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -8,7 +8,7 @@ import {
     OwnerDto,
     Source,
 } from 'sailpoint-api-client'
-import { Context, logger } from '@sailpoint/connector-sdk'
+import { Context, logger, readConfig } from '@sailpoint/connector-sdk'
 import { Config } from '../model/config'
 import { MSDAY, PADDING } from '../constants'
 
@@ -21,6 +21,12 @@ export const md = MarkdownIt({
 })
 
 //================ MISC ================
+export const pushNewItem = <T>(item: T, list: T[]) => {
+    if (!list.includes(item)) {
+        list.push(item)
+    }
+}
+
 export const envInfo = () => {
     logger.info({ '--CPU--': os.cpus() })
 }
@@ -317,4 +323,13 @@ export const stringifyIdentity = (identity: IdentityDocument, url: string): stri
     const displayName = `${identity.displayName} **[${identity.attributes!.uid}](${url}/ui/a/admin/identities/${identity.id}/details/attributes)**)`
 
     return displayName
+}
+
+export const safeReadConfig = async (): Promise<Config> => {
+    const config = await readConfig()
+    config.merging_map = config.merging_map ?? []
+    config.merging_attributes = config.merging_attributes ?? []
+    config.sources = config.sources ?? []
+
+    return config
 }

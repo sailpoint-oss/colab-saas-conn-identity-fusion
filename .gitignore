@@ -28,3 +28,5 @@ config.json
 # Sentry Config File
 .sentryclirc
 .httpyac.json
+
+.env

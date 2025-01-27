@@ -66,6 +66,7 @@ export class Configuration {
   
     private async getAccessToken(url: string, formData: FormData): Promise<string> {
       try {
+        console.log(`attempting to fetch access token from ${url}`)
         const { data, status } = await axios.post(url, formData)
         if (status === 200) {
           return data.access_token;

@@ -70,6 +70,11 @@ jobs:
           set -e
           sail conn upload -c "${{ env.STACK }}" -f ./dist/${{ env.CONNECTOR_NAME }}-${{ env.PACKAGE_VERSION }}.zip
 
+      - name: Run integration tests for connector
+        if: github.event_name == 'pull_request'
+        id: integrationTests
+        run: |
+          npm run test
       # deploy connector if push to main branch
       - name: Check version change
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'

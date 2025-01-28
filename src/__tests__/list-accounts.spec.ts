@@ -23,7 +23,7 @@ describe('API Integration Tests', () => {
     const config = {
       method: 'post',
       maxBodyLength: Infinity,
-      url: `${process.env.SAIL_BASE_URL}/v2024/platform-connectors/fusion-connector-v1/invoke`,
+      url: `${process.env.SAIL_BASE_URL}/v2024/platform-connectors/${process.env.STACK}/invoke`,
       headers: { 
         'Content-Type': 'application/json', 
         'Accept': 'application/json', 

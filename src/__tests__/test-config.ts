@@ -61,11 +61,12 @@ export class Configuration {
           formData.append('grant_type', 'client_credentials')
           formData.append('client_id', clientId)
           formData.append('client_secret', clientSecret)
-          return this.getAccessToken(url + 'oauth/token', formData);
+          return this.getAccessToken(url + '/oauth/token', formData);
     }
   
     private async getAccessToken(url: string, formData: FormData): Promise<string> {
       try {
+        console.log(`attempting to fetch access token from ${url}`)
         const { data, status } = await axios.post(url, formData)
         if (status === 200) {
           return data.access_token;

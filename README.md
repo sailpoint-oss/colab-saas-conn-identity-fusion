@@ -20,6 +20,11 @@
 
 ## Changelog
 
+-   0.0.4 (2024-06-28):
+    -   Updated sailpoint-api-client to v1.3.4
+    -   Added option to use governance group/owner of each origin source as reviewer
+    -   Added option to use overall merging score or individual attribute score
+    -   Bug fixes
 -   0.0.3 (2024-04-03):
     -   Updated sailpoint-api-client to v1.3.2
     -   Added keepalive messages to account aggregation process

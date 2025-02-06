@@ -1127,7 +1127,7 @@ export class ContextHelper {
 
         try {
             if (oldTransform) {
-                await this.client.updateTransform(oldTransform, oldTransform.id)
+                await this.client.updateTransform(transformDef, oldTransform.id)
             } else {
                 await this.client.createTransform(transformDef)
             }

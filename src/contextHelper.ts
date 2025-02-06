@@ -1107,6 +1107,7 @@ export class ContextHelper {
                 }
             })
         }
+        attributeValues.push("false")
         
         const transformDef: any = {
             "name": name,

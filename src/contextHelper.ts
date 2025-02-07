@@ -640,7 +640,7 @@ export class ContextHelper {
 
         uniqueAccount.attributes!.uniqueID = uniqueID
         uniqueAccount.attributes!.statuses = statuses
-        uniqueAccount.attributes!.actions = []
+        uniqueAccount.attributes!.actions = ['fusion']
         uniqueAccount.attributes!.reviews = []
         uniqueAccount.attributes!.history = []
         uniqueAccount.modified = new Date(0).toISOString()
@@ -682,7 +682,7 @@ export class ContextHelper {
 
         if (account) {
             account.attributes!.accounts ??= []
-            account.attributes!.actions ??= []
+            account.attributes!.actions ??= ['fusion']
             account.attributes!.reviews ??= []
             account.modified = new Date(0).toISOString()
             const uniqueAccount = await this.refreshUniqueAccount(account)

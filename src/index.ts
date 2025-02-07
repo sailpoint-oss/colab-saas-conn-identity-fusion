@@ -378,7 +378,7 @@ export const connector = async () => {
 
         const ctx = new ContextHelper(config)
 
-        const actions = [].concat(input.attributes.actions)
+        const actions: string[] = [].concat(input.attributes.actions)
         let uniqueAccount: Account | undefined
         let originAccount: Account | undefined
 
@@ -399,22 +399,18 @@ export const connector = async () => {
                 default:
                     if (!uniqueAccount) {
                         logger.info(`Creating ${input.attributes.uniqueID} account.`)
-
                         await ctx.init(input.schema)
-
-                        const identity = (await ctx.getIdentityByUID(input.attributes.uniqueID)) as IdentityDocument
-                        originAccount = (await ctx.getAccountByIdentity(identity)) as Account
-                        originAccount.attributes = { ...originAccount.attributes, ...identity.attributes }
-                        const message = 'Created from access request'
-                        uniqueAccount = await ctx.buildUniqueAccount(originAccount, 'reviewer', message)
-
-                        ctx.setUUID(uniqueAccount)
+                        uniqueAccount = await ctx.createUniqueAccount(input.attributes.uniqueID, 'fusion')
                     }
-                    const sourceName = ctx.getSourceNameByID(action)
-                    const message = datedMessage(`Reviewer assigned for ${sourceName} source`, originAccount)
-                    uniqueAccount.attributes!.actions.push(action)
-                    pushNewItem('reviewer', uniqueAccount.attributes!.statuses)
-                    uniqueAccount.attributes!.history.push(message)
+
+                    if (action !== 'fusion') {
+                        const sourceName = ctx.getSourceNameByID(action)
+                        const message = datedMessage(`${action} assigned for ${sourceName} source`, originAccount)
+                        uniqueAccount.attributes!.actions.push(action)
+                        pushNewItem(action, uniqueAccount.attributes!.actions)
+                        pushNewItem('reviewer', uniqueAccount.attributes!.statuses)
+                        uniqueAccount.attributes!.history.push(message)
+                    }
 
                     break
             }

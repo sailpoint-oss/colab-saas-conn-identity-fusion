@@ -57,31 +57,6 @@
             "items": [
                 {
                     "type": "section",
-                    "sectionTitle": "Identity Security Cloud connection configuration",
-                    "sectionHelpMessage": "Configuration details for Identity Security Cloud Tenant",
-                    "items": [
-                        {
-                            "key": "baseurl",
-                            "label": "Identity Security Cloud API URL",
-                            "type": "url",
-                            "required": true
-                        },
-                        {
-                            "key": "clientId",
-                            "label": "Personal Access Token ID",
-                            "type": "text",
-                            "required": true
-                        },
-                        {
-                            "key": "clientSecret",
-                            "label": "Personal Access Token secret",
-                            "type": "secret",
-                            "required": true
-                        }
-                    ]
-                },
-                {
-                    "type": "section",
                     "sectionTitle": "Base configuration",
                     "sectionHelpMessage": "Add your base configuration details here",
                     "items": [
@@ -226,6 +201,14 @@
                         {
                             "key": "global_merging_score",
                             "label": "Use overall merging score for all attributes?",
+                            "parentKey": "merging_isEnabled",
+                            "parentValue": "true",
+                            "type": "checkbox",
+                            "required": false
+                        },
+                        {
+                            "key": "global_merging_identical",
+                            "label": "Automatically correlate if identical?",
                             "parentKey": "merging_isEnabled",
                             "parentValue": "true",
                             "type": "checkbox",

@@ -20,6 +20,7 @@ export interface Config {
     invocationId: string
     managementWorkgroup: SourceManagementWorkgroup | null
     merging_isEnabled: boolean
+    global_merging_identical: boolean
     merging_attributes: string[]
     merging_expirationDays: number
     merging_map: {

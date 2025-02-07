@@ -618,7 +618,7 @@ export class ContextHelper {
         this.sendEmail(email)
     }
 
-    async buildUniqueAccount(account: Account, status: string | string[], msg: string): Promise<Account> {
+    async buildUniqueAccount(account: Account, status: string | string[] | undefined, msg: string): Promise<Account> {
         const c = 'buildUniqueAccount'
         logger.debug(lm(`Processing ${account.name} (${account.id})`, c, 1))
         let uniqueID: string
@@ -626,18 +626,20 @@ export class ContextHelper {
         const uniqueAccount = account
 
         uniqueAccount.attributes!.accounts = [account.id]
-        if (status !== 'reviewer') {
-            uniqueID = await buildUniqueID(account, this.ids, this.config, true)
-        } else {
+        if (status === 'reviewer' || !status) {
             logger.debug(lm(`Taking identity uid as unique ID`, c, 1))
             const identity = this.identitiesById.get(account.identityId!)!
             uniqueID = identity.attributes!.uid
+        } else {
+            uniqueID = await buildUniqueID(account, this.ids, this.config, true)
         }
 
         this.setUUID(account)
 
+        const statuses = status ? [status].flat() : []
+
         uniqueAccount.attributes!.uniqueID = uniqueID
-        uniqueAccount.attributes!.statuses = [status]
+        uniqueAccount.attributes!.statuses = statuses
         uniqueAccount.attributes!.actions = []
         uniqueAccount.attributes!.reviews = []
         uniqueAccount.attributes!.history = []
@@ -650,6 +652,18 @@ export class ContextHelper {
 
         this.ids.add(uniqueAccount.attributes!.uniqueID)
         this.accounts.push(uniqueAccount)
+
+        return uniqueAccount
+    }
+
+    async createUniqueAccount(uniqueID: string, action: string): Promise<Account> {
+        const identity = (await this.getIdentityByUID(uniqueID)) as IdentityDocument
+        const originAccount = (await this.getAccountByIdentity(identity)) as Account
+        originAccount.attributes = { ...originAccount.attributes, ...identity.attributes }
+        const message = 'Created from access request'
+        const uniqueAccount = await this.buildUniqueAccount(originAccount, action, message)
+
+        this.setUUID(uniqueAccount)
 
         return uniqueAccount
     }
@@ -929,7 +943,11 @@ export class ContextHelper {
 
         let results: string[] = []
         const normalizedAccount = normalizeAccountAttributes(uncorrelatedAccount, this.config.merging_map)
-        const identicalMatch = this.findIdenticalMatch(normalizedAccount)
+        let identicalMatch = undefined
+
+        if (this.config.global_merging_identical) {
+            identicalMatch = this.findIdenticalMatch(normalizedAccount)
+        }
         let similarMatches: SimilarAccountMatch[] = []
         if (identicalMatch) {
             logger.debug(

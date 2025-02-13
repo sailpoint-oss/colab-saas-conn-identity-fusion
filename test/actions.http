@@ -36,13 +36,6 @@ Content-Type: application/json
   "input": {},
   "config": {{config}}
 }
-
-HTTP/1.1 200  - OK
-x-powered-by: Express
-content-type: application/x-ndjson
-date: Tue, 04 Feb 2025 16:42:58 GMT
-connection: close
-transfer-encoding: chunked
 ###
 # Account read
 POST {{url}}
@@ -111,9 +104,16 @@ Content-Type: application/json
 
 {
   "type": "std:account:update",
-  "input": {"changes":[{"attribute":"groups","op":"Remove","value":"fc16aee3-0359-4d46-b746-b36459211660"}],"identity":"3175644","key":{"simple":{"id":"3175644"}}},
+  "input": {"changes":[{"attribute":"actions","op":"Add","value":"report"}],"identity":"5cf22308-d9bb-4e95-acee-6be513aceb17","key":{"simple":{"id":"3175644"}}},
   "config": {{config}}
 }
+
+HTTP/1.1 200  - OK
+x-powered-by: Express
+content-type: application/x-ndjson
+date: Thu, 13 Feb 2025 12:11:38 GMT
+connection: close
+transfer-encoding: chunked
 ###
 # Account create
 POST {{url}}

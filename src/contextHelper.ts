@@ -242,6 +242,7 @@ export class ContextHelper {
             'accounts',
             'attributes.cloudAuthoritativeSource',
             'attributes.uid',
+            'attributes.email',
         ])
         this.config.merging_map.map((x) => `attributes.${x.identity}`).forEach((x) => attributes.add(x))
         this.config.merging_attributes.map((x) => `attributes.${x}`).forEach((x) => attributes.add(x))
@@ -862,37 +863,6 @@ export class ContextHelper {
         return this.mergingEnabled
     }
 
-    buildCandidatesAttributes() {
-        // const candidatesAttributes = this.identities.map((x) =>
-        //     buildIdentityAttributesObject(x, this.config.merging_map)
-        // )
-        // this.candidatesStringAttributes = candidatesAttributes.map((x) => JSON.stringify(x))
-        for (const identity of this.identitiesById.values()) {
-            this.candidatesStringAttributes.push(
-                JSON.stringify(buildIdentityAttributesObject(identity, this.config.merging_map))
-            )
-        }
-    }
-
-    private findIdenticalMatch(account: Account): IdentityDocument | undefined {
-        let match: IdentityDocument | undefined
-        const accountAttributes = buildAccountAttributesObject(account, this.config.merging_map, true)
-        const accountStringAttributes = JSON.stringify(accountAttributes)
-
-        const firstIndex = this.candidatesStringAttributes.indexOf(accountStringAttributes)
-        if (firstIndex > -1) {
-            const identities = this.identitiesById.values()
-            let i = 0
-            while (i++ < firstIndex) {
-                identities.next()
-            }
-            match = identities.next().value
-            // match = this.identities[firstIndex]
-        }
-
-        return match
-    }
-
     private findSimilarMatches(account: Account): { identity: IdentityDocument; score: Map<string, string> }[] {
         const similarMatches: { identity: IdentityDocument; score: Map<string, string> }[] = []
         const accountAttributes = buildAccountAttributesObject(account, this.config.merging_map, true)
@@ -941,38 +911,28 @@ export class ContextHelper {
     async analyzeUncorrelatedAccount(uncorrelatedAccount: Account): Promise<AccountAnalysis> {
         const c = 'analyzeUncorrelatedAccount'
 
-        let results: string[] = []
+        const results: string[] = []
         const normalizedAccount = normalizeAccountAttributes(uncorrelatedAccount, this.config.merging_map)
         let identicalMatch = undefined
 
-        if (this.config.global_merging_identical) {
-            identicalMatch = this.findIdenticalMatch(normalizedAccount)
-        }
-        let similarMatches: SimilarAccountMatch[] = []
-        if (identicalMatch) {
-            logger.debug(
-                lm(`Checking identical match for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id}).`, c, 1)
-            )
-            results.push(`Identical to ${stringifyIdentity(identicalMatch, this.baseUrl)}`)
-            logger.debug(lm(`Identical match found.`, c, 1))
-            // Check if similar match exists
-        } else {
-            logger.debug(
-                lm(`Checking similar matches for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id})`, c, 1)
-            )
+        logger.debug(lm(`Checking similar matches for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id})`, c, 1))
 
-            similarMatches = this.findSimilarMatches(uncorrelatedAccount)
-            if (similarMatches.length > 0) {
-                results = results.concat(
-                    similarMatches.map(
-                        (x) =>
-                            `Similar to ${stringifyIdentity(x.identity, this.baseUrl)} [ ${stringifyScore(x.score)} ]`
-                    )
-                )
-                logger.debug(lm(`Similar matches found`, c, 1))
-            } else {
-                results.push(`No matching identity found`)
+        let similarMatches: SimilarAccountMatch[] = []
+        similarMatches = this.findSimilarMatches(uncorrelatedAccount)
+        if (similarMatches.length > 0) {
+            logger.debug(lm(`Similar matches found`, c, 1))
+            for (const match of similarMatches) {
+                let message
+                if ([...match.score.values()].every((x) => x === '100')) {
+                    message = `Identical to ${stringifyIdentity(match.identity, this.baseUrl)}`
+                    identicalMatch = match.identity
+                } else {
+                    message = `Similar to ${stringifyIdentity(match.identity, this.baseUrl)} [ ${stringifyScore(match.score)} ]`
+                }
+                results.push(message)
             }
+        } else {
+            results.push(`No matching identity found`)
         }
 
         const analysis: AccountAnalysis = {
@@ -997,7 +957,7 @@ export class ContextHelper {
         if (this.isMergingEnabled()) {
             const { identicalMatch, similarMatches } = await this.analyzeUncorrelatedAccount(uncorrelatedAccount)
 
-            if (identicalMatch) {
+            if (identicalMatch && this.config.global_merging_identical) {
                 logger.debug(lm(`Identical match found.`, c, 1))
                 const currentAccount = this.getFusionAccountByIdentity(identicalMatch)
                 if (currentAccount) {

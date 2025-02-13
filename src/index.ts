@@ -184,9 +184,6 @@ export const connector = async () => {
                 }
             }
             pendingAccounts = pendingAccounts.filter((x) => x.uncorrelated === true)
-            if (pendingAccounts.length > 0) {
-                ctx.buildCandidatesAttributes()
-            }
             // console.timeLog('stdAccountList', 'correlated accounts')
 
             //CREATE BASELINE

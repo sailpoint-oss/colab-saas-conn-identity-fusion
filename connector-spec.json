@@ -77,10 +77,6 @@
                                     "value": "first"
                                 },
                                 {
-                                    "label": "Make multi-valued entitlement",
-                                    "value": "multi"
-                                },
-                                {
                                     "label": "Concatenate values",
                                     "value": "concatenate"
                                 }
@@ -273,10 +269,6 @@
                                                 {
                                                     "label": "First found",
                                                     "value": "first"
-                                                },
-                                                {
-                                                    "label": "Make multi-valued entitlement",
-                                                    "value": "multi"
                                                 },
                                                 {
                                                     "label": "Concatenate values",

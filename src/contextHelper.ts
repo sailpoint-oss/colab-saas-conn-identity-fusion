@@ -248,6 +248,7 @@ export class ContextHelper {
             'accounts',
             'attributes.cloudAuthoritativeSource',
             'attributes.uid',
+            'attributes.email',
         ])
         this.config.merging_map.map((x) => `attributes.${x.identity}`).forEach((x) => attributes.add(x))
         this.config.merging_attributes.map((x) => `attributes.${x}`).forEach((x) => attributes.add(x))
@@ -624,7 +625,7 @@ export class ContextHelper {
         this.sendEmail(email)
     }
 
-    async buildUniqueAccount(account: Account, status: string | string[], msg: string): Promise<Account> {
+    async buildUniqueAccount(account: Account, status: string | string[] | undefined, msg: string): Promise<Account> {
         const c = 'buildUniqueAccount'
         logger.debug(lm(`Processing ${account.name} (${account.id})`, c, 1))
         let uniqueID: string
@@ -632,19 +633,21 @@ export class ContextHelper {
         const uniqueAccount = account
 
         uniqueAccount.attributes!.accounts = [account.id]
-        if (status !== 'reviewer') {
-            uniqueID = await buildUniqueID(account, this.ids, this.config, true)
-        } else {
+        if (status === 'reviewer' || !status) {
             logger.debug(lm(`Taking identity uid as unique ID`, c, 1))
             const identity = this.identitiesById.get(account.identityId!)!
             uniqueID = identity.attributes!.uid
+        } else {
+            uniqueID = await buildUniqueID(account, this.ids, this.config, true)
         }
 
         this.setUUID(account)
 
+        const statuses = status ? [status].flat() : []
+
         uniqueAccount.attributes!.uniqueID = uniqueID
-        uniqueAccount.attributes!.statuses = [status]
-        uniqueAccount.attributes!.actions = []
+        uniqueAccount.attributes!.statuses = statuses
+        uniqueAccount.attributes!.actions = ['fusion']
         uniqueAccount.attributes!.reviews = []
         uniqueAccount.attributes!.history = []
         uniqueAccount.modified = new Date(0).toISOString()
@@ -656,6 +659,18 @@ export class ContextHelper {
 
         this.ids.add(uniqueAccount.attributes!.uniqueID)
         this.accounts.push(uniqueAccount)
+
+        return uniqueAccount
+    }
+
+    async createUniqueAccount(uniqueID: string, action: string): Promise<Account> {
+        const identity = (await this.getIdentityByUID(uniqueID)) as IdentityDocument
+        const originAccount = (await this.getAccountByIdentity(identity)) as Account
+        originAccount.attributes = { ...originAccount.attributes, ...identity.attributes }
+        const message = 'Created from access request'
+        const uniqueAccount = await this.buildUniqueAccount(originAccount, action, message)
+
+        this.setUUID(uniqueAccount)
 
         return uniqueAccount
     }
@@ -674,7 +689,7 @@ export class ContextHelper {
 
         if (account) {
             account.attributes!.accounts ??= []
-            account.attributes!.actions ??= []
+            account.attributes!.actions ??= ['fusion']
             account.attributes!.reviews ??= []
             account.modified = new Date(0).toISOString()
             const uniqueAccount = await this.refreshUniqueAccount(account)
@@ -854,37 +869,6 @@ export class ContextHelper {
         return this.mergingEnabled
     }
 
-    buildCandidatesAttributes() {
-        // const candidatesAttributes = this.identities.map((x) =>
-        //     buildIdentityAttributesObject(x, this.config.merging_map)
-        // )
-        // this.candidatesStringAttributes = candidatesAttributes.map((x) => JSON.stringify(x))
-        for (const identity of this.identitiesById.values()) {
-            this.candidatesStringAttributes.push(
-                JSON.stringify(buildIdentityAttributesObject(identity, this.config.merging_map))
-            )
-        }
-    }
-
-    private findIdenticalMatch(account: Account): IdentityDocument | undefined {
-        let match: IdentityDocument | undefined
-        const accountAttributes = buildAccountAttributesObject(account, this.config.merging_map, true)
-        const accountStringAttributes = JSON.stringify(accountAttributes)
-
-        const firstIndex = this.candidatesStringAttributes.indexOf(accountStringAttributes)
-        if (firstIndex > -1) {
-            const identities = this.identitiesById.values()
-            let i = 0
-            while (i++ < firstIndex) {
-                identities.next()
-            }
-            match = identities.next().value
-            // match = this.identities[firstIndex]
-        }
-
-        return match
-    }
-
     private findSimilarMatches(account: Account): { identity: IdentityDocument; score: Map<string, string> }[] {
         const similarMatches: { identity: IdentityDocument; score: Map<string, string> }[] = []
         const accountAttributes = buildAccountAttributesObject(account, this.config.merging_map, true)
@@ -933,34 +917,28 @@ export class ContextHelper {
     async analyzeUncorrelatedAccount(uncorrelatedAccount: Account): Promise<AccountAnalysis> {
         const c = 'analyzeUncorrelatedAccount'
 
-        let results: string[] = []
+        const results: string[] = []
         const normalizedAccount = normalizeAccountAttributes(uncorrelatedAccount, this.config.merging_map)
-        const identicalMatch = this.findIdenticalMatch(normalizedAccount)
-        let similarMatches: SimilarAccountMatch[] = []
-        if (identicalMatch) {
-            logger.debug(
-                lm(`Checking identical match for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id}).`, c, 1)
-            )
-            results.push(`Identical to ${stringifyIdentity(identicalMatch, this.baseUrl)}`)
-            logger.debug(lm(`Identical match found.`, c, 1))
-            // Check if similar match exists
-        } else {
-            logger.debug(
-                lm(`Checking similar matches for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id})`, c, 1)
-            )
+        let identicalMatch = undefined
 
-            similarMatches = this.findSimilarMatches(uncorrelatedAccount)
-            if (similarMatches.length > 0) {
-                results = results.concat(
-                    similarMatches.map(
-                        (x) =>
-                            `Similar to ${stringifyIdentity(x.identity, this.baseUrl)} [ ${stringifyScore(x.score)} ]`
-                    )
-                )
-                logger.debug(lm(`Similar matches found`, c, 1))
-            } else {
-                results.push(`No matching identity found`)
+        logger.debug(lm(`Checking similar matches for ${uncorrelatedAccount.name} (${uncorrelatedAccount.id})`, c, 1))
+
+        let similarMatches: SimilarAccountMatch[] = []
+        similarMatches = this.findSimilarMatches(uncorrelatedAccount)
+        if (similarMatches.length > 0) {
+            logger.debug(lm(`Similar matches found`, c, 1))
+            for (const match of similarMatches) {
+                let message
+                if ([...match.score.values()].every((x) => x === '100')) {
+                    message = `Identical to ${stringifyIdentity(match.identity, this.baseUrl)}`
+                    identicalMatch = match.identity
+                } else {
+                    message = `Similar to ${stringifyIdentity(match.identity, this.baseUrl)} [ ${stringifyScore(match.score)} ]`
+                }
+                results.push(message)
             }
+        } else {
+            results.push(`No matching identity found`)
         }
 
         const analysis: AccountAnalysis = {
@@ -985,7 +963,7 @@ export class ContextHelper {
         if (this.isMergingEnabled()) {
             const { identicalMatch, similarMatches } = await this.analyzeUncorrelatedAccount(uncorrelatedAccount)
 
-            if (identicalMatch) {
+            if (identicalMatch && this.config.global_merging_identical) {
                 logger.debug(lm(`Identical match found.`, c, 1))
                 const currentAccount = this.getFusionAccountByIdentity(identicalMatch)
                 if (currentAccount) {

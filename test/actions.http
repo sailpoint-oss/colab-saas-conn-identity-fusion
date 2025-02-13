@@ -104,9 +104,16 @@ Content-Type: application/json
 
 {
   "type": "std:account:update",
-  "input": {"changes":[{"attribute":"groups","op":"Remove","value":"fc16aee3-0359-4d46-b746-b36459211660"}],"identity":"3175644","key":{"simple":{"id":"3175644"}}},
+  "input": {"changes":[{"attribute":"actions","op":"Add","value":"report"}],"identity":"5cf22308-d9bb-4e95-acee-6be513aceb17","key":{"simple":{"id":"3175644"}}},
   "config": {{config}}
 }
+
+HTTP/1.1 200  - OK
+x-powered-by: Express
+content-type: application/x-ndjson
+date: Thu, 13 Feb 2025 12:11:38 GMT
+connection: close
+transfer-encoding: chunked
 ###
 # Account create
 POST {{url}}
@@ -114,6 +121,13 @@ Content-Type: application/json
 
 {
   "type": "std:account:create",
-  "input": {"attributes":{"groups":"fc16aee3-0359-4d46-b746-b36459211660","name":"amanda.ross"},"identity":null,"key":{"simple":{"id":null}}},
+  "input": {"attributes":{"actions":["3b186995676f4eb28b8b7389365b12e9", "abdc85c46cdf4f42b559d812566b8bfb"],"uniqueID":"david.tyrrell"},"identity":null,"key":{"simple":{"id":null}}},
   "config": {{config}}
 }
+
+HTTP/1.1 200  - OK
+x-powered-by: Express
+content-type: application/x-ndjson
+date: Tue, 04 Feb 2025 17:18:48 GMT
+connection: close
+transfer-encoding: chunked

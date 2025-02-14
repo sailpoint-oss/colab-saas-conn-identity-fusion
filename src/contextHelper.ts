@@ -38,7 +38,14 @@ import {
     stringifyIdentity,
     stringifyScore,
 } from './utils'
-import { EDITFORMNAME, NONAGGREGABLE_TYPES, TRANSFORM_NAME, UNIQUEFORMNAME, WORKFLOW_NAME, reservedAttributes } from './constants'
+import {
+    EDITFORMNAME,
+    NONAGGREGABLE_TYPES,
+    TRANSFORM_NAME,
+    UNIQUEFORMNAME,
+    WORKFLOW_NAME,
+    reservedAttributes,
+} from './constants'
 import { EditForm, UniqueForm } from './model/form'
 import { buildUniqueID } from './utils/unique'
 import { ReviewEmail, ErrorEmail, ReportEmail } from './model/email'
@@ -163,7 +170,7 @@ export class ContextHelper {
         const wfName = `${WORKFLOW_NAME} (${this.config!.cloudDisplayName})`
         this.emailer = await this.getEmailWorkflow(wfName, owner)
 
-        const accountIdentites = await  this.getSourceIdentityAttributes()
+        const accountIdentites = await this.getSourceIdentityAttributes()
         const transformName = `${TRANSFORM_NAME} (${this.config!.cloudDisplayName})`
         await this.createTransform(transformName, accountIdentites)
 
@@ -556,7 +563,7 @@ export class ContextHelper {
                             values = values.map((x) => attrSplit(x))
 
                             if (['multi', 'concatenate'].includes(attributeMerge)) {
-                                multiValue = multiValue.concat(values).flat()
+                                multiValue = multiValue.concat(values).flat().flat()
                             }
                             values: for (const value of values) {
                                 switch (attributeMerge) {
@@ -607,7 +614,7 @@ export class ContextHelper {
                 }
             }
 
-            attributes.sources = sourceAccounts.map((x) => `[${x.sourceName}]`).join(' ')
+            attributes.sources = [...new Set(sourceAccounts)].map((x) => `[${x.sourceName}]`).join(' ')
             account.attributes = attributes
         }
     }
@@ -1071,36 +1078,35 @@ export class ContextHelper {
         return workflow
     }
 
-    private async createTransform(name: string,  sourceIdentityAttribute: SourceIdentityAttribute[] ): Promise<boolean> {
-        
+    private async createTransform(name: string, sourceIdentityAttribute: SourceIdentityAttribute[]): Promise<boolean> {
         const oldTransform = await this.client.getTransformByName(name)
 
         const attributeValues: any = []
         for (const sourceIdentity of sourceIdentityAttribute) {
             attributeValues.push({
-                "type": "accountAttribute",
-                "attributes": {
-                    "sourceName": sourceIdentity.sourceName,
-                    "attributeName": sourceIdentity.identityAttribute
-                }
+                type: 'accountAttribute',
+                attributes: {
+                    sourceName: sourceIdentity.sourceName,
+                    attributeName: sourceIdentity.identityAttribute,
+                },
             })
         }
-        attributeValues.push("false")
-        
+        attributeValues.push('false')
+
         const transformDef: any = {
-            "name": name,
-            "type": "static",
-            "attributes": {
-                "value": "#if($processed == 'false')staging#{else}active#end",
-                "processed": {
-                    "type": "firstValid",
-                    "attributes": {
-                        "values": attributeValues,
-                        "ignoreErrors": true
-                    }
-                }
+            name: name,
+            type: 'static',
+            attributes: {
+                value: "#if($processed == 'false')staging#{else}active#end",
+                processed: {
+                    type: 'firstValid',
+                    attributes: {
+                        values: attributeValues,
+                        ignoreErrors: true,
+                    },
+                },
             },
-            "internal": false
+            internal: false,
         }
 
         try {
@@ -1114,7 +1120,6 @@ export class ContextHelper {
             return false
         }
 
-        
         return true
     }
 
@@ -1208,7 +1213,7 @@ export class ContextHelper {
             if (identityAttribute) {
                 identityAttributes.push({
                     sourceName: source.name,
-                    identityAttribute
+                    identityAttribute,
                 })
             }
         }

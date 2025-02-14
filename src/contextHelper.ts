@@ -560,10 +560,13 @@ export class ContextHelper {
                         }
 
                         if (values.length > 0) {
-                            values = values.map((x) => attrSplit(x))
+                            values = values
+                                .map((x) => attrSplit(x))
+                                .flat()
+                                .flat()
 
                             if (['multi', 'concatenate'].includes(attributeMerge)) {
-                                multiValue = multiValue.concat(values).flat().flat()
+                                multiValue = multiValue.concat(values)
                             }
                             values: for (const value of values) {
                                 switch (attributeMerge) {

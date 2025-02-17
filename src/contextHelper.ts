@@ -446,6 +446,17 @@ export class ContextHelper {
         await this.client.correlateAccount(identityId, accountId)
     }
 
+    private async getSourceAccount(id: string): Promise<Account | undefined> {
+        if (this.initiated === 'lazy') {
+            const account = await this.client.getAccount(id)
+            if (account && this.config.sources.includes(account.sourceName)) {
+                return account
+            }
+        } else {
+            return this.authoritativeAccounts.find((x) => x.id === id)
+        }
+    }
+
     async refreshUniqueAccount(account: Account): Promise<UniqueAccount> {
         const c = 'refreshUniqueAccount'
 
@@ -482,14 +493,12 @@ export class ContextHelper {
 
             for (const acc of account.attributes!.accounts as string[]) {
                 try {
-                    if (
-                        !accountIds.includes(acc) &&
-                        (this.initiated === 'lazy' || this.authoritativeAccounts.find((x) => x.id === acc))
-                    ) {
-                        const sourceAccount = sourceAccounts.find((x) => x.id === acc && !x.manuallyCorrelated)
-                        if (sourceAccount) {
+                    if (!accountIds.includes(acc)) {
+                        const sourceAccount = await this.getSourceAccount(acc)
+                        if (sourceAccount && !sourceAccount.manuallyCorrelated) {
                             logger.debug(lm(`Correlating ${acc} account with ${account.identity?.name}.`, c, 1))
                             const response = await this.client.correlateAccount(account.identityId! as string, acc)
+                            sourceAccounts.push(sourceAccount)
                             accountIds.push(acc)
                         }
                     }
@@ -531,9 +540,13 @@ export class ContextHelper {
         return uniqueAccount
     }
 
-    private refreshAccountAttributes(account: Account, sourceAccounts: Account[], schema: AccountSchema) {
-        if (sourceAccounts.length > 0) {
+    private refreshAccountAttributes(account: Account, accounts: Account[], schema: AccountSchema) {
+        if (accounts.length > 0) {
             const attributes: { [key: string]: any } = {}
+            let sourceAccounts: Account[] = []
+            for (const source of this.config.sources) {
+                sourceAccounts = sourceAccounts.concat(accounts.filter((x) => x.sourceName === source))
+            }
 
             attributes: for (const attrDef of schema.attributes) {
                 if (!reservedAttributes.includes(attrDef.name)) {

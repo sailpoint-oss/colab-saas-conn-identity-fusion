@@ -51,10 +51,17 @@ Content-Type: application/json
 {
   "type": "std:account:read",
   "input": {
-    "identity": "f1838af6-f7c6-48ac-8197-e020ca0820f3"
+    "identity": "39cfe4e3-5b45-44db-971f-e0cbdacb6021"
   },
   "config": {{config}}
 }
+
+HTTP/1.1 200  - OK
+x-powered-by: Express
+content-type: application/x-ndjson
+date: Fri, 14 Feb 2025 17:53:09 GMT
+connection: close
+transfer-encoding: chunked
 ###
 # Entitlement list
 POST {{url}}

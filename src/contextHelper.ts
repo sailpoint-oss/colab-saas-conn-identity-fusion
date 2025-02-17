@@ -462,7 +462,8 @@ export class ContextHelper {
             let accountIds: string[] = []
             if (identity) {
                 const accounts = identity.accounts!
-                accountIds = accounts.filter((x) => this.config.sources.includes(x.source!.name!)).map((x) => x.id!)
+                const sourceAccounts = accounts.filter((x) => this.config.sources.includes(x.source!.name!))
+                accountIds = sourceAccounts.map((x) => x.id!)
                 const maxIds = Math.max(accountIds.length, account.attributes!.accounts.length)
                 const diffIds = new Set(accountIds.concat(account.attributes!.accounts ?? []))
 
@@ -485,9 +486,12 @@ export class ContextHelper {
                         !accountIds.includes(acc) &&
                         (this.initiated === 'lazy' || this.authoritativeAccounts.find((x) => x.id === acc))
                     ) {
-                        logger.debug(lm(`Correlating ${acc} account with ${account.identity?.name}.`, c, 1))
-                        const response = await this.client.correlateAccount(account.identityId! as string, acc)
-                        accountIds.push(acc)
+                        const sourceAccount = sourceAccounts.find((x) => x.id === acc && !x.manuallyCorrelated)
+                        if (sourceAccount) {
+                            logger.debug(lm(`Correlating ${acc} account with ${account.identity?.name}.`, c, 1))
+                            const response = await this.client.correlateAccount(account.identityId! as string, acc)
+                            accountIds.push(acc)
+                        }
                     }
                 } catch (e) {
                     logger.error(lm(`Failed to correlate ${acc} account with ${account.identity?.name}.`, c, 1))

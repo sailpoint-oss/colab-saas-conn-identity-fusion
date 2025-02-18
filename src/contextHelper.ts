@@ -145,8 +145,13 @@ export class ContextHelper {
         const id = this.config!.spConnectorInstanceId as string
         const allSources = await this.client.listSources()
         this.source = allSources.find((x) => (x.connectorAttributes as any).spConnectorInstanceId === id)
-        this.sources = allSources.filter((x) => this.config!.sources.includes(x.name))
-
+        this.sources =
+            this.config?.sources.reduce((sources, curSourceName) => {
+                const sourceToAdd = allSources.find((source) => source.name === curSourceName)
+                if (!!sourceToAdd) sources.push(sourceToAdd)
+                return sources
+            }, [] as Source[]) ?? []
+        
         if (!this.source) {
             throw new ConnectorError('No connector source was found on the tenant.')
         }

@@ -584,32 +584,34 @@ export class ContextHelper {
                                 multiValue = multiValue.concat(values)
                             }
                             values: for (const value of values) {
-                                switch (attributeMerge) {
-                                    case 'first':
-                                        if (firstSource) {
-                                            if (value.length === 1) {
-                                                attributes![attrDef.name] = value[0]
-                                            } else {
-                                                attributes![attrDef.name] = value
+                                if (value) {
+                                    switch (attributeMerge) {
+                                        case 'first':
+                                            if (firstSource) {
+                                                if (value.length === 1) {
+                                                    attributes![attrDef.name] = value[0]
+                                                } else {
+                                                    attributes![attrDef.name] = value
+                                                }
+                                                firstSource = false
+                                                break accounts
                                             }
-                                            firstSource = false
-                                            break accounts
-                                        }
-                                        break
+                                            break
 
-                                    case 'source':
-                                        const source = attrConf?.source
-                                        if (sourceAccount.sourceName === source) {
-                                            if (value.length === 1) {
-                                                attributes![attrDef.name] = value[0]
-                                            } else {
-                                                attributes![attrDef.name] = value
+                                        case 'source':
+                                            const source = attrConf?.source
+                                            if (sourceAccount.sourceName === source) {
+                                                if (value.length === 1) {
+                                                    attributes![attrDef.name] = value[0]
+                                                } else {
+                                                    attributes![attrDef.name] = value
+                                                }
+                                                break accounts
                                             }
-                                            break accounts
-                                        }
-                                        break
-                                    default:
-                                        break
+                                            break
+                                        default:
+                                            break
+                                    }
                                 }
                             }
                         }

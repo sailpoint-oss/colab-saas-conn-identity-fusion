@@ -461,65 +461,60 @@ export class ContextHelper {
         const sourceAccounts = await this.listSourceAccounts(account)
         let needsRefresh = false
 
-        if (account.uncorrelated) {
-            logger.debug(lm(`New account. Needs to be enabled.`, c, 2))
-            needsRefresh = true
+        logger.debug(lm(`Existing account. Enforcing defined correlation.`, c, 1))
+        const identity = await this.getAccountIdentity(account)
+
+        let accountIds: string[] = []
+        if (identity) {
+            const accounts = identity.accounts!
+            const sourceAccounts = accounts.filter((x) => this.config.sources.includes(x.source!.name!))
+            accountIds = sourceAccounts.map((x) => x.id!)
+            const maxIds = Math.max(accountIds.length, account.attributes!.accounts.length)
+            const diffIds = new Set(accountIds.concat(account.attributes!.accounts ?? []))
+
+            if (maxIds < diffIds.size) {
+                needsRefresh = true
+                const isEdited = account.attributes!.statuses.includes('edited')
+                if (isEdited) {
+                    deleteArrayItem(account.attributes!.statuses, 'edited')
+                    const message = datedMessage(`Automatically unedited by change in contributing accounts`)
+                    account.attributes!.history.push(message)
+                }
+            }
         } else {
-            logger.debug(lm(`Existing account. Enforcing defined correlation.`, c, 1))
-            const identity = await this.getAccountIdentity(account)
+            needsRefresh = false
+        }
 
-            let accountIds: string[] = []
-            if (identity) {
-                const accounts = identity.accounts!
-                const sourceAccounts = accounts.filter((x) => this.config.sources.includes(x.source!.name!))
-                accountIds = sourceAccounts.map((x) => x.id!)
-                const maxIds = Math.max(accountIds.length, account.attributes!.accounts.length)
-                const diffIds = new Set(accountIds.concat(account.attributes!.accounts ?? []))
-
-                if (maxIds < diffIds.size) {
-                    needsRefresh = true
-                    const isEdited = account.attributes!.statuses.includes('edited')
-                    if (isEdited) {
-                        deleteArrayItem(account.attributes!.statuses, 'edited')
-                        const message = datedMessage(`Automatically unedited by change in contributing accounts`)
-                        account.attributes!.history.push(message)
+        for (const acc of account.attributes!.accounts as string[]) {
+            try {
+                if (!accountIds.includes(acc)) {
+                    const sourceAccount = await this.getSourceAccount(acc)
+                    if (sourceAccount && sourceAccount.uncorrelated) {
+                        logger.debug(lm(`Correlating ${acc} account with ${account.identity?.name}.`, c, 1))
+                        const response = await this.client.correlateAccount(account.identityId! as string, acc)
+                        sourceAccounts.push(sourceAccount)
+                        accountIds.push(acc)
                     }
                 }
+            } catch (e) {
+                logger.error(lm(`Failed to correlate ${acc} account with ${account.identity?.name}.`, c, 1))
+            }
+        }
+        account.attributes!.accounts = accountIds
+
+        if (account.attributes!.accounts.length === 0) {
+            needsRefresh = false
+        } else if (
+            !needsRefresh ||
+            !account.attributes!.statuses.some((x: string) => ['edited', 'orphan'].includes(x))
+        ) {
+            const lastConfigChange = new Date(this.source!.modified!).getTime()
+            const lastModified = new Date(account.modified!).getTime()
+            if (lastModified < lastConfigChange) {
+                needsRefresh = true
             } else {
-                needsRefresh = false
-            }
-
-            for (const acc of account.attributes!.accounts as string[]) {
-                try {
-                    if (!accountIds.includes(acc)) {
-                        const sourceAccount = await this.getSourceAccount(acc)
-                        if (sourceAccount && !sourceAccount.manuallyCorrelated) {
-                            logger.debug(lm(`Correlating ${acc} account with ${account.identity?.name}.`, c, 1))
-                            const response = await this.client.correlateAccount(account.identityId! as string, acc)
-                            sourceAccounts.push(sourceAccount)
-                            accountIds.push(acc)
-                        }
-                    }
-                } catch (e) {
-                    logger.error(lm(`Failed to correlate ${acc} account with ${account.identity?.name}.`, c, 1))
-                }
-            }
-            account.attributes!.accounts = accountIds
-
-            if (account.attributes!.accounts.length === 0) {
-                needsRefresh = false
-            } else if (
-                !needsRefresh ||
-                !account.attributes!.statuses.some((x: string) => ['edited', 'orphan'].includes(x))
-            ) {
-                const lastConfigChange = new Date(this.source!.modified!).getTime()
-                const lastModified = new Date(account.modified!).getTime()
-                if (lastModified < lastConfigChange) {
-                    needsRefresh = true
-                } else {
-                    const newSourceData = sourceAccounts.find((x) => new Date(x.modified!).getTime() > lastModified)
-                    needsRefresh = newSourceData ? true : false
-                }
+                const newSourceData = sourceAccounts.find((x) => new Date(x.modified!).getTime() > lastModified)
+                needsRefresh = newSourceData ? true : false
             }
         }
 

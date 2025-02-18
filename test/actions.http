@@ -40,7 +40,7 @@ Content-Type: application/json
 HTTP/1.1 200  - OK
 x-powered-by: Express
 content-type: application/x-ndjson
-date: Tue, 18 Feb 2025 15:52:12 GMT
+date: Tue, 18 Feb 2025 16:01:07 GMT
 connection: close
 transfer-encoding: chunked
 ###
@@ -51,7 +51,7 @@ Content-Type: application/json
 {
   "type": "std:account:read",
   "input": {
-    "identity": "b2bfbfef-e0bb-4624-98ca-04e3b8f56de0"
+    "identity": "6a3bf623-558a-40b7-8453-4d67a3611239"
   },
   "config": {{config}}
 }
@@ -107,7 +107,7 @@ Content-Type: application/json
 {
   "type": "std:account:enable",
   "input": {
-    "identity": "993"
+    "identity": "6a3bf623-558a-40b7-8453-4d67a3611239"
   },
   "config": {{config}}
 }

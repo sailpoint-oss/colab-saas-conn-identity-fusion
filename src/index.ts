@@ -401,7 +401,7 @@ export const connector = async () => {
                     }
 
                     if (action !== 'fusion') {
-                        const sourceName = ctx.getSourceNameByID(action)
+                        const sourceName = await ctx.getSourceNameByID(action)
                         const message = datedMessage(`Reviewer assigned for ${sourceName} source`, originAccount)
                         uniqueAccount.attributes!.actions.push(action)
                         pushNewItem(action, uniqueAccount.attributes!.actions)

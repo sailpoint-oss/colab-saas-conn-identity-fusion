@@ -282,6 +282,14 @@ export class SDKClient {
         return response.data
     }
 
+    async getSource(id: string) {
+        const api = new SourcesApi(this.config)
+
+        const response = await api.getSource({ id })
+
+        return response.data
+    }
+
     async listSourceSchemas(sourceId: string) {
         const api = new SourcesApi(this.config)
 

@@ -9,7 +9,6 @@ import {
     OwnerDto,
     Schema,
     Source,
-    Transform,
     WorkflowBeta,
 } from 'sailpoint-api-client'
 import { Config } from './model/config'
@@ -26,7 +25,6 @@ import {
     attrConcat,
     attrSplit,
     buildAccountAttributesObject,
-    buildIdentityAttributesObject,
     composeErrorMessage,
     datedMessage,
     getExpirationDate,
@@ -702,8 +700,13 @@ export class ContextHelper {
         return uniqueAccount
     }
 
-    getSourceNameByID(id: string): string {
-        const source = this.sources.find((x) => x.id === id)
+    async getSourceNameByID(id: string): Promise<string> {
+        let source
+        if (this.initiated === 'full') {
+            source = this.sources.find((x) => x.id === id)
+        } else {
+            source = await this.client.getSource(id)
+        }
 
         return source?.name ? source.name : ''
     }

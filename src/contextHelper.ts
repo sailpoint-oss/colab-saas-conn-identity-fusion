@@ -660,7 +660,7 @@ export class ContextHelper {
         const uniqueAccount = account
 
         uniqueAccount.attributes!.accounts = [account.id]
-        if (status === 'reviewer' || !status) {
+        if (status === 'requested' || !status) {
             logger.debug(lm(`Taking identity uid as unique ID`, c, 1))
             const identity = this.identitiesById.get(account.identityId!)!
             uniqueID = identity.attributes!.uid
@@ -690,12 +690,12 @@ export class ContextHelper {
         return uniqueAccount
     }
 
-    async createUniqueAccount(uniqueID: string, action: string): Promise<Account> {
+    async createUniqueAccount(uniqueID: string, status: string): Promise<Account> {
         const identity = (await this.getIdentityByUID(uniqueID)) as IdentityDocument
         const originAccount = (await this.getAccountByIdentity(identity)) as Account
         originAccount.attributes = { ...originAccount.attributes, ...identity.attributes }
         const message = 'Created from access request'
-        const uniqueAccount = await this.buildUniqueAccount(originAccount, action, message)
+        const uniqueAccount = await this.buildUniqueAccount(originAccount, status, message)
 
         this.setUUID(uniqueAccount)
 

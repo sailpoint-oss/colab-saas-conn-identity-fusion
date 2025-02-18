@@ -396,13 +396,13 @@ export const connector = async () => {
                 default:
                     if (!uniqueAccount) {
                         logger.info(`Creating ${input.attributes.uniqueID} account.`)
-                        await ctx.init(input.schema)
-                        uniqueAccount = await ctx.createUniqueAccount(input.attributes.uniqueID, 'fusion')
+                        await ctx.init(input.schema, true)
+                        uniqueAccount = await ctx.createUniqueAccount(input.attributes.uniqueID, 'requested')
                     }
 
                     if (action !== 'fusion') {
                         const sourceName = ctx.getSourceNameByID(action)
-                        const message = datedMessage(`${action} assigned for ${sourceName} source`, originAccount)
+                        const message = datedMessage(`Reviewer assigned for ${sourceName} source`, originAccount)
                         uniqueAccount.attributes!.actions.push(action)
                         pushNewItem(action, uniqueAccount.attributes!.actions)
                         pushNewItem('reviewer', uniqueAccount.attributes!.statuses)

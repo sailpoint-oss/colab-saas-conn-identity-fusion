@@ -128,7 +128,7 @@ Content-Type: application/json
 
 {
   "type": "std:account:create",
-  "input": {"attributes":{"actions":["9fd9741e885e4564b4d0b3a35b6bda42","7eace9939f07c4a5cb9b4e859c5f0029c","ef3c614cb963443db9f33e0e31d8011d"],"uniqueID":"jake.maskell"}},
+  "input": {"attributes":{"actions":["ee052a17b0e0474a9bb81b91f33cbcd1","774f900fcb0c4fe8b1238fe78ea231ce","421617998c384529885b950304f6364d"],"uniqueID":"cristian.grau"}},
   "config": {{config}}
 }
 

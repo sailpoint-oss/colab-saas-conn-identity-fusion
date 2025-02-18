@@ -1,0 +1,24 @@
+employeeNumber,username,givenName,familyName,displayName,mail,status,title,country,department,region
+257,Katie.Murray,Katie,Murray,Katie Murray,Katie.Murray@e522.site,active,Inventory Analyst I,US,Inventory,Northeast
+147,Teresa.Cole,Teresa,Cole,Teresa Cole,Teresa.Cole1@e522.site,active,Admin Assistant,US,Admissions,Northeast
+167,Christopher.Clark,Christopher,Clark,Christopher Clark,Christopher.Clark@e522.site,active,SQL Server Administrator,US,Information Technology,Northeast
+1a2a3a4b,Margaret.Garcia,Margaret,Garcia,Margaret Garcia,Margaret.Garcia@e522.site,active,Oracle Administrator,US,Information Technology,Northeast
+169,Joseph.O'Sullivan,Joseph,O'Sullivan,Joseph O'Sullivan,Joseph.OSullivan@e522.site,active,SQL Server Administrator,US,Information Technology,Northeast
+170,Todd.Olson,Tod,Olson,Todd Olson,Todd.Olson@e522.site,active,Inventory Analyst I,US,Inventory,Northeast
+171,Caroline.Perry,Caroline,Perry,Caroline Perry,Caroline.Perry@e522.site,active,Inventory Analyst I,US,Inventory,Northeast
+172,Bryan.Ryan,Bryan,Ryan,Bryan Ryan,Bryan.Ryan@e522.site,active,Paralegal,US,Legal,Northeast
+153,Albert.Woods,Albert,Woods,Albert Woods,Albert.Woods@e522.site,active,Admin Assistant,US,Admissions,Northeast
+154,Patrick.Woods,Patrick,Woods,Patrick Woods,Patrick.Woods@e522.site,active,Admin Assistant,US,Admissions,Northeast
+173,Tiffany.Alvarez,Tiffany,Alvarez,Tiffany Alvarez,Tiffany.Alvarez@e522.site,active,Admin Assistant,US,Sales,Central
+174,John.West,John,West,John West,smeagol@gmail.com,active,Sales Exec,US,Sales,Central
+175,Curtis.Perkins,Curtis,Perkins,Curtis Perkins,Curtis.Perkins@e522.site,active,Sales Exec,US,Sales,Central
+176,Richard.Garza,Richard,Garza,Richard Garza,Richard.Garza@e522.site,inactive,Sales Exec,US,Sales,Central
+177,Manolo.Garcia,Manolo,García,Manolo García,wassup52345@outlook.com,active,Sales Exec,US,Sales,Central
+178,Manuel.Howell,Manuel,Howell,Manuel Howell,Manuel.Howell@e522.site,active,Sales Exec,US,Sales,Central
+179,Rafael.Reynolds,Rafael,Reynolds,Rafael Reynolds,Rafael.Reynolds@e522.site,active,Sales Exec,US,Sales,Central
+180,Elliot.Ness,Elliot,Ness,Elliot Ness,Elliot.Ness@e522.site,inactive,Program Coordinator,US,Human Resources,Central
+181,Elliot.Mess,Elliot,Mess,Elliot Ness,Elliot.Mess@e522.site,inactive,Program Coordinator,US,Human Resources,Central
+182,Eliot.Mess,Eliot,Mess,Eliot Ness,Eliot.Mess@e522.site,inactive,Program Coordinator,US,Human Resources,Central
+183,Victor.Reynolds,Victor,Reynolds,Victor Reynolds,Victor.Reynolds@e522.site,active,Sales Exec,US,Sales,Central
+184,Vicky.Reynolds,Vicky,Reynolds,Vicky Reynolds,Vicky.Reynolds@e522.site,active,Sales Exec,US,Sales,Central
+185,Howell.Manuel,Howell,Manuel,Howell Manuel,Howell.Manuel@e522.site,active,Sales Exec,US,Sales,Central

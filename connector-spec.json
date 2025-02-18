@@ -7,6 +7,7 @@
         "std:account:enable",
         "std:account:disable",
         "std:account:create",
+        "std:account:update",
         "std:account:discover-schema",
         "std:entitlement:list"
     ],
@@ -15,12 +16,13 @@
     "sourceConfigInitialValues": {
         "uid_digits": 1,
         "uid_template": "#set($initial = $firstname.substring(0, 1))$initial$lastname$counter",
-        "merging_expirationDays": 5
+        "merging_expirationDays": 5,
+        "merging_isEnabled": true
     },
     "sourceConfig": [
         {
             "type": "menu",
-            "label": "Configuration",
+            "label": "Connection Details",
             "items": [
                 {
                     "type": "section",
@@ -29,7 +31,7 @@
                     "items": [
                         {
                             "key": "baseurl",
-                            "label": "IdentityNow API URL",
+                            "label": "Identity Security Cloud API URL",
                             "type": "url",
                             "required": true
                         },
@@ -46,7 +48,13 @@
                             "required": true
                         }
                     ]
-                },
+                }
+            ]
+        },
+        {
+            "type": "menu",
+            "label": "Configuration",
+            "items": [
                 {
                     "type": "section",
                     "sectionTitle": "Base configuration",
@@ -69,20 +77,10 @@
                                     "value": "first"
                                 },
                                 {
-                                    "label": "Make multi-valued entitlement",
-                                    "value": "multi"
-                                },
-                                {
                                     "label": "Concatenate values",
                                     "value": "concatenate"
                                 }
                             ]
-                        },
-                        {
-                            "key": "includeExisting",
-                            "label": "Include existing identities?",
-                            "type": "checkbox",
-                            "required": false
                         },
                         {
                             "key": "deleteEmpty",
@@ -93,6 +91,12 @@
                         {
                             "key": "reset",
                             "label": "Reset accounts?",
+                            "type": "checkbox",
+                            "required": false
+                        },
+                        {
+                            "key": "forceAggregation",
+                            "label": "Force source aggregation?",
                             "type": "checkbox",
                             "required": false
                         }
@@ -165,32 +169,54 @@
                 },
                 {
                     "type": "section",
-                    "sectionTitle": "Deduplication configuration",
-                    "sectionHelpMessage": "Add your deduplication configuration details here",
+                    "sectionTitle": "Merging/mapping configuration",
+                    "sectionHelpMessage": "Add your account merging and attribute mapping configuration details here",
                     "items": [
                         {
-                            "key": "merging_attributes",
-                            "label": "List of identity attributes to include in form",
-                            "type": "list",
+                            "key": "merging_isEnabled",
+                            "label": "Enable account merging?",
+                            "type": "checkbox",
                             "required": false
                         },
                         {
-                            "key": "merging_reviewer",
-                            "label": "Manual reviewer identity or governance group",
-                            "type": "text",
+                            "key": "merging_attributes",
+                            "label": "List of identity attributes to include in form",
+                            "parentKey": "merging_isEnabled",
+                            "parentValue": "true",
+                            "type": "list",
                             "required": false
                         },
                         {
                             "key": "merging_expirationDays",
                             "label": "Manual review expiration days",
+                            "parentKey": "merging_isEnabled",
+                            "parentValue": "true",
                             "type": "number",
+                            "required": true
+                        },
+                        {
+                            "key": "global_merging_score",
+                            "label": "Use overall merging score for all attributes?",
+                            "parentKey": "merging_isEnabled",
+                            "parentValue": "true",
+                            "type": "checkbox",
+                            "required": false
+                        },
+                        {
+                            "key": "global_merging_identical",
+                            "label": "Automatically correlate if identical?",
+                            "parentKey": "merging_isEnabled",
+                            "parentValue": "true",
+                            "type": "checkbox",
                             "required": false
                         },
                         {
                             "key": "merging_score",
                             "label": "Minimum similarity score [0-100] (LIG3 similarity function * 100 from Levenshtein distance)",
+                            "parentKey": "global_merging_score",
+                            "parentValue": "true",
                             "type": "number",
-                            "required": false
+                            "required": true
                         },
                         {
                             "key": "merging_map",
@@ -227,7 +253,7 @@
                                             "label": "Use mapping for unique ID generation only",
                                             "type": "checkbox",
                                             "required": false,
-                                            "helpKey": "When checked, this mapping is not used for deduplication but only for unique ID generation"
+                                            "helpKey": "When checked, this mapping is not used for merging but only for unique ID generation"
                                         }
                                     ]
                                 },
@@ -243,10 +269,6 @@
                                                 {
                                                     "label": "First found",
                                                     "value": "first"
-                                                },
-                                                {
-                                                    "label": "Make multi-valued entitlement",
-                                                    "value": "multi"
                                                 },
                                                 {
                                                     "label": "Concatenate values",
@@ -266,6 +288,12 @@
                                             "parentValue": "source",
                                             "required": true,
                                             "helpKey": "Technical name of the identity attribute to compare with"
+                                        },
+                                        {
+                                            "key": "merging_score",
+                                            "label": "Minimum similarity score [0-100] (LIG3 similarity function * 100 from Levenshtein distance)",
+                                            "type": "number",
+                                            "required": false
                                         }
                                     ]
                                 }
@@ -279,10 +307,9 @@
     "accountSchema": {
         "displayAttribute": "uuid",
         "identityAttribute": "uuid",
-        "groupAttribute": "status",
         "attributes": [
             {
-                "name": "id",
+                "name": "uniqueID",
                 "description": "Unique ID",
                 "type": "string",
                 "required": true
@@ -300,13 +327,22 @@
                 "multi": true
             },
             {
-                "name": "status",
-                "description": "Status",
+                "name": "statuses",
+                "description": "Statuses",
                 "type": "string",
                 "multi": true,
                 "entitlement": true,
                 "managed": false,
                 "schemaObjectType": "status"
+            },
+            {
+                "name": "actions",
+                "description": "Actions",
+                "type": "string",
+                "multi": true,
+                "entitlement": true,
+                "managed": true,
+                "schemaObjectType": "action"
             },
             {
                 "name": "accounts",
@@ -321,15 +357,56 @@
                 "type": "string",
                 "multi": true,
                 "entitlement": false
+            },
+            {
+                "name": "sources",
+                "description": "sources",
+                "type": "string",
+                "multi": false,
+                "entitlement": false
+            },
+            {
+                "name": "IIQDisabled",
+                "description": "Disabled",
+                "type": "string",
+                "multi": false,
+                "entitlement": false
             }
         ]
     },
     "entitlementSchemas": [
         {
             "type": "status",
-            "identityAttribute": "name",
+            "identityAttribute": "id",
             "displayAttribute": "name",
             "attributes": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "description": "id"
+                },
+                {
+                    "name": "name",
+                    "type": "string",
+                    "description": "name"
+                },
+                {
+                    "name": "description",
+                    "type": "string",
+                    "description": "description"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "identityAttribute": "id",
+            "displayAttribute": "name",
+            "attributes": [
+                {
+                    "name": "id",
+                    "type": "string",
+                    "description": "id"
+                },
                 {
                     "name": "name",
                     "type": "string",
@@ -342,5 +419,21 @@
                 }
             ]
         }
-    ]
+    ],
+    "accountCreateTemplate": {
+        "fields": [
+            {
+                "key": "uniqueID",
+                "label": "uniqueID",
+                "type": "string",
+                "required": true,
+                "initialValue": {
+                    "type": "identityAttribute",
+                    "attributes": {
+                        "name": "uid"
+                    }
+                }
+            }
+        ]
+    }
 }

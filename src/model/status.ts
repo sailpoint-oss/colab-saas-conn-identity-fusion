@@ -1,6 +1,7 @@
 import { Attributes } from '@sailpoint/connector-sdk'
 
 export type StatusSource = {
+    id: string
     name: string
     description: string
 }
@@ -12,11 +13,8 @@ export class Status {
     attributes: Attributes
 
     constructor(object: StatusSource) {
-        this.attributes = {
-            name: object.name,
-            description: object.description,
-        }
-        this.identity = this.attributes.name as string
+        this.attributes = { ...object }
+        this.identity = this.attributes.id as string
         this.uuid = this.attributes.name as string
     }
 }

@@ -1,0 +1,53 @@
+name: PR infra destroy
+
+env: 
+  SAIL_BASE_URL: ${{ secrets.FUSION_TEST_TENANT_BASE_URL }}
+  SAIL_CLIENT_ID: ${{ secrets.FUSION_CLIENT_ID }}
+  SAIL_CLIENT_SECRET: ${{ secrets.FUSION_CLIENT_SECRET }}
+  CLI_VERSION: "2.1.9"
+  
+on:
+  # Runs on pushes targeting the default branch
+  pull_request:
+    types: [closed]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+
+jobs:
+  delete_connector:
+    name: Delete the connector
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+      # Checkout the master branch request to run rsync
+      - name: Checkout main branch
+        uses: actions/checkout@v3
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Extract version from package.json
+        run: |
+          echo "CONNECTOR_NAME=$(jq -r .name package.json)" >> $GITHUB_ENV
+      - name: set env vars
+        run: |
+          echo "STACK=${{ env.CONNECTOR_NAME }}-${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+
+
+      - name: Download sailpoint-cli package
+        run: |
+          wget https://github.com/sailpoint-oss/sailpoint-cli/releases/download/${{ env.CLI_VERSION }}/sail_${{ env.CLI_VERSION }}_linux_amd64.deb
+
+      - name: Install sailpoint-cli
+        run: |
+          sudo dpkg -i sail_${{ env.CLI_VERSION }}_linux_amd64.deb
+
+      - name: Use sailpoint-cli to upload new connector
+        run: |
+          sail conn delete -c "${{ env.STACK }}"

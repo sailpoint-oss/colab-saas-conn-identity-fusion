@@ -1,55 +1,69 @@
 @url = http://localhost:3000
-@baseurl = xxx
-
-@clientId = xxx
-@clientSecret = xxx
-
-
-### std:test-connection
+###
+# Test connection
 POST {{url}}
 Content-Type: application/json
 
 {
   "type": "std:test-connection",
   "input": {},
-  "config": {
-        "patId": "{{clientId}}",
-        "patSecret": "{{clientSecret}}",
-        "idnUrl": "{{baseurl}}"
-    }
+  "config": {{config}}
+}
+###
+# Discover schema
+POST {{url}}
+Content-Type: application/json
+
+{
+  "type": "std:account:discover-schema",
+  "input": {},
+  "config": {{config}}
 }
 
-### std:account:list
+HTTP/1.1 200  - OK
+x-powered-by: Express
+content-type: application/x-ndjson
+date: Thu, 07 Nov 2024 11:08:54 GMT
+connection: close
+transfer-encoding: chunked
+###
+# Account list
 POST {{url}}
 Content-Type: application/json
 
 {
   "type": "std:account:list",
   "input": {},
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}"
-    }
+  "config": {{config}}
 }
 
-### std:account:read
+HTTP/1.1 200  - OK
+x-powered-by: Express
+content-type: application/x-ndjson
+date: Tue, 18 Feb 2025 16:01:07 GMT
+connection: close
+transfer-encoding: chunked
+###
+# Account read
 POST {{url}}
 Content-Type: application/json
 
 {
   "type": "std:account:read",
   "input": {
-    "identity": "3175644"
+    "identity": "6a3bf623-558a-40b7-8453-4d67a3611239"
   },
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}"
-    }
+  "config": {{config}}
 }
 
-### std:entitlement:list
+HTTP/1.1 200  - OK
+x-powered-by: Express
+content-type: application/x-ndjson
+date: Mon, 17 Feb 2025 16:36:57 GMT
+connection: close
+transfer-encoding: chunked
+###
+# Entitlement list
 POST {{url}}
 Content-Type: application/json
 
@@ -58,15 +72,10 @@ Content-Type: application/json
   "input": {
         "type": "group"
     },
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}",
-        "includePermissions": false
-    }
+  "config": {{config}}
 }
-
-### std:entitlement:read
+###
+# Entitlement read
 POST {{url}}
 Content-Type: application/json
 
@@ -75,15 +84,10 @@ Content-Type: application/json
   "input": {
         "identity": "fc16aee3-0359-4d46-b746-b36459211660"
     },
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}",
-        "includePermissions": false
-    }
+  "config": {{config}}
 }
-
-### std:account:disable
+###
+# Account disable
 POST {{url}}
 Content-Type: application/json
 
@@ -93,54 +97,44 @@ Content-Type: application/json
     "identity": "993",
     "key": { "simple": { "id": "993" } }
   },
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}"
-    }
+"config": {{config}}
 }
-
-### std:account:enable
+###
+# Account enable
 POST {{url}}
 Content-Type: application/json
 
 {
   "type": "std:account:enable",
   "input": {
-    "identity": "993"
+    "identity": "6a3bf623-558a-40b7-8453-4d67a3611239"
   },
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}"
-    }
+  "config": {{config}}
 }
-
-### std:account:update
+###
+# Account update
 POST {{url}}
 Content-Type: application/json
 
 {
   "type": "std:account:update",
-  "input": {"changes":[{"attribute":"groups","op":"Remove","value":"fc16aee3-0359-4d46-b746-b36459211660"}],"identity":"3175644","key":{"simple":{"id":"3175644"}}},
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}"
-    }
+  "input": {"changes":[{"attribute":"actions","op":"Add","value":["ee052a17b0e00474a9bb81b91f33cbcd1","774f900fcb0c4fe8b1238fe78ea231ce","421617998c384529885b950304f6364d"]}],"identity":"a57eedca-ecfa-4d66-8556-d979c053b633","key":{"simple":{"id":"3175644"}}},
+  "config": {{config}}
 }
-
-### std:account:create
+###
+# Account create
 POST {{url}}
 Content-Type: application/json
 
 {
   "type": "std:account:create",
-  "input": {"attributes":{"groups":"fc16aee3-0359-4d46-b746-b36459211660","name":"cristian.grau"},"identity":null,"key":{"simple":{"id":null}}},
-  "config": {
-        "patId": "{{patId}}",
-        "patSecret": "{{patSecret}}",
-        "idnUrl": "{{idnUrl}}"
-    }
+  "input": {"attributes":{"actions":["ee052a17b0e0474a9bb81b91f33cbcd1","774f900fcb0c4fe8b1238fe78ea231ce","421617998c384529885b950304f6364d"],"uniqueID":"cristian.grau"}},
+  "config": {{config}}
 }
 
+HTTP/1.1 200  - OK
+x-powered-by: Express
+content-type: application/x-ndjson
+date: Tue, 18 Feb 2025 12:46:33 GMT
+connection: close
+transfer-encoding: chunked

@@ -24,3 +24,9 @@ input.json
 config.json
 
 /reports
+/exportedObjects
+# Sentry Config File
+.sentryclirc
+.httpyac.json
+
+.env

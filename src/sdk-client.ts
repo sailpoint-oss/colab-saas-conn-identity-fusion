@@ -1,4 +1,6 @@
+import axios, { AxiosInstance } from 'axios'
 import axiosRetry from 'axios-retry'
+import axiosThrottle from 'axios-request-throttle'
 import {
     Configuration,
     CreateFormDefinitionRequestBeta,
@@ -21,33 +23,34 @@ import {
     TestWorkflowRequestBeta,
     PostExternalExecuteWorkflowRequestBeta,
     WorkflowOAuthClientBeta,
-    IdentityProfilesBetaApi,
-    IdentityAttributeConfigBeta,
     EntitlementsBetaApi,
     EntitlementBeta,
     IdentityBeta,
-    IdentitiesBetaApiListIdentitiesRequest,
     IdentitiesBetaApi,
     WorkgroupDtoBeta,
     GovernanceGroupsBetaApi,
     ListWorkgroupMembers200ResponseInnerBeta,
-} from 'sailpoint-api-client'
-import { AxiosRequestConfig } from 'axios'
-import {
     AccountsApi,
     AccountsApiGetAccountRequest,
     AccountsApiListAccountsRequest,
     IdentityDocument,
     JsonPatchOperation,
+    ProvisioningPolicyDto,
+    SearchDocument,
+    SourcesApiCreateProvisioningPolicyRequest,
+    SourcesApiGetProvisioningPolicyRequest,
     Transform,
     TransformsApi,
-} from 'sailpoint-api-client/dist/v3'
+    UsageType,
+    SourcesBetaApi,
+    TaskManagementBetaApi,
+    TransformRead,
+} from 'sailpoint-api-client'
 import { URL } from 'url'
-import { logger } from '@sailpoint/connector-sdk'
+import { TASKRESULTRETRIES, TASKRESULTWAIT, TOKEN_URL_PATH } from './constants'
+import { retriesConfig, throttleConfig } from './axios'
 
-const TOKEN_URL_PATH = '/oauth/token'
-
-function sleep(ms: number) {
+const sleep = (ms: number) => {
     return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
@@ -56,59 +59,65 @@ export class SDKClient {
 
     constructor(config: any) {
         const tokenUrl = new URL(config.baseurl).origin + TOKEN_URL_PATH
-        this.config = new Configuration({ ...config, tokenUrl })
-        this.config.retriesConfig = {
-            retries: 10,
-            // retryDelay: (retryCount) => { return retryCount * 2000; },
-            retryDelay: (retryCount, error) => axiosRetry.exponentialDelay(retryCount, error, 2000),
-            retryCondition: (error) => {
-                return (
-                    axiosRetry.isNetworkError(error) ||
-                    axiosRetry.isRetryableError(error) ||
-                    error.response?.status === 429
-                )
-            },
-            onRetry: (retryCount, error, requestConfig) => {
-                logger.debug(
-                    `Retrying API [${requestConfig.url}] due to request error: [${error}]. Try number [${retryCount}]`
-                )
-            },
-        }
-        // this.config.retriesConfig = {
-        //     retries: 5,
-        //     retryDelay: axiosRetry.exponentialDelay,
-        //     retryCondition: axiosRetry.isRetryableError,
-        // }
+        this.config = new Configuration({ ...config, tokenUrl, retriesConfig })
+        axiosRetry(axios as any, retriesConfig)
+        axiosThrottle.use(axios as any, throttleConfig)
     }
 
-    async listIdentities(): Promise<IdentityDocument[]> {
+    async listIdentities(attributes: string[]): Promise<IdentityDocument[]> {
         const api = new SearchApi(this.config)
         const search: Search = {
             indices: ['identities'],
             query: {
                 query: '*',
             },
-            sort: ['name'],
+            sort: ['id'],
             includeNested: true,
+            queryResultFilter: {
+                includes: attributes,
+            },
         }
 
         const response = await Paginator.paginateSearchApi(api, search)
         return response.data as IdentityDocument[]
     }
 
-    async getIdentityByUID(uid: string): Promise<IdentityBeta | undefined> {
-        const api = new IdentitiesBetaApi(this.config)
+    async getIdentityByUID(uid: string): Promise<IdentityDocument | undefined> {
+        const api = new SearchApi(this.config)
 
-        const requestParameters: IdentitiesBetaApiListIdentitiesRequest = {
-            filters: `alias eq "${uid}"`,
+        const search: Search = {
+            indices: ['identities'],
+            query: {
+                query: `attributes.uid.exact:"${uid}"`,
+            },
+            includeNested: true,
         }
-        const response = await api.listIdentities(requestParameters)
+
+        const response = await api.searchPost({ search, limit: 1 })
 
         if (response.data.length > 0) {
-            return response.data[0]
+            return response.data[0] as IdentityDocument
         } else {
             return undefined
         }
+    }
+
+    async listIdentitiesByEntitlements(entitlements: string[]): Promise<IdentityDocument[]> {
+        const api = new SearchApi(this.config)
+
+        const query = entitlements.map((x) => `@access(value.exact:"${x}")`).join(' OR ')
+
+        const search: Search = {
+            indices: ['identities'],
+            query: {
+                query,
+            },
+            includeNested: true,
+        }
+
+        const response = await api.searchPost({ search })
+
+        return response.data as IdentityDocument[]
     }
 
     async listIdentitiesBySource(id: string): Promise<IdentityDocument[]> {
@@ -161,10 +170,7 @@ export class SDKClient {
     async listAccountsBySource(id: string): Promise<Account[]> {
         const api = new AccountsApi(this.config)
         const filters = `sourceId eq "${id}"`
-        const search = async (
-            requestParameters?: AccountsApiListAccountsRequest | undefined,
-            axiosOptions?: AxiosRequestConfig<any> | undefined
-        ) => {
+        const search = async (requestParameters?: AccountsApiListAccountsRequest | undefined) => {
             return await api.listAccounts({ ...requestParameters, filters })
         }
 
@@ -176,13 +182,6 @@ export class SDKClient {
     async getAccountBySourceAndNativeIdentity(id: string, nativeIdentity: string): Promise<Account | undefined> {
         const api = new AccountsApi(this.config)
         const filters = `sourceId eq "${id}" and nativeIdentity eq "${nativeIdentity}"`
-        const search = async (
-            requestParameters?: AccountsApiListAccountsRequest | undefined,
-            axiosOptions?: AxiosRequestConfig<any> | undefined
-        ) => {
-            return await api.listAccounts({ ...requestParameters, filters })
-        }
-
         const response = await api.listAccounts({ filters })
 
         return response.data.length > 0 ? response.data[0] : undefined
@@ -195,10 +194,7 @@ export class SDKClient {
             const sourceValues = sourceIds.map((x) => `"${x}"`).join(', ')
             filters += ` and sourceId in (${sourceValues})`
         }
-        const search = async (
-            requestParameters?: AccountsApiListAccountsRequest | undefined,
-            axiosOptions?: AxiosRequestConfig<any> | undefined
-        ) => {
+        const search = async (requestParameters?: AccountsApiListAccountsRequest | undefined) => {
             return await api.listAccounts({ ...requestParameters, filters })
         }
 
@@ -214,10 +210,7 @@ export class SDKClient {
             const sourceValues = sourceIds.map((x) => `"${x}"`).join(', ')
             filters += ` and sourceId in (${sourceValues})`
         }
-        const search = async (
-            requestParameters?: AccountsApiListAccountsRequest | undefined,
-            axiosOptions?: AxiosRequestConfig<any> | undefined
-        ) => {
+        const search = async (requestParameters?: AccountsApiListAccountsRequest | undefined) => {
             return await api.listAccounts({ ...requestParameters, filters })
         }
 
@@ -233,10 +226,7 @@ export class SDKClient {
             const sourceValues = sourceIds.map((x) => `"${x}"`).join(', ')
             filters = `sourceId in (${sourceValues})`
         }
-        const search = async (
-            requestParameters?: AccountsApiListAccountsRequest | undefined,
-            axiosOptions?: AxiosRequestConfig<any> | undefined
-        ) => {
+        const search = async (requestParameters?: AccountsApiListAccountsRequest | undefined) => {
             return await api.listAccounts({ ...requestParameters, filters })
         }
 
@@ -257,61 +247,17 @@ export class SDKClient {
         }
     }
 
-    // async getIdenticalIdentities(sourceId: string, attributes: object): Promise<IdentityDocument[]> {
-    //     if (Object.keys(attributes).length > 0) {
-    //         const conditions: string[] = []
-    //         conditions.push(`@accounts(source.id:${sourceId})`)
-    //         // conditions.push(`NOT attributes.uid.exact:"${uid}"`)
-    //         for (const [key, value] of Object.entries(attributes) as [string, string][]) {
-    //             conditions.push(`attributes.${key}.exact:"${value}"`)
-    //         }
-    //         const query = conditions.join(' AND ')
-    //         const api = new SearchApi(this.config)
-    //         const search: Search = {
-    //             indices: ['identities'],
-    //             query: {
-    //                 query,
-    //             },
-    //             sort: ['-name'],
-    //             includeNested: false,
-    //         }
+    async getAccountByIdentityID(identityId: string, sourceId: string): Promise<Account | undefined> {
+        const api = new AccountsApi(this.config)
+        const requestParameters: AccountsApiListAccountsRequest = {
+            limit: 1,
+            filters: `identityId eq "${identityId}" and sourceId eq "${sourceId}"`,
+        }
 
-    //         const response = await Paginator.paginateSearchApi(api, search, undefined, this.batchSize)
-    //         return response.data
-    //     } else {
-    //         return []
-    //     }
-    // }
+        const response = await api.listAccounts(requestParameters)
 
-    // async getSimilarIdentities(sourceId: string, attributes: object): Promise<IdentityDocument[]> {
-    //     if (Object.keys(attributes).length > 0) {
-    //         const conditions: string[] = []
-    //         // conditions.push(`NOT attributes.uid.exact:"${uid}"`)
-    //         conditions.push(`@accounts(source.id:${sourceId})`)
-    //         for (const [key, value] of Object.entries(attributes) as [string, string][]) {
-    //             const subconditions: string[] = []
-    //             subconditions.push(`attributes.${key}.exact:/.*${value}.*/`)
-    //             subconditions.push(`attributes.${key}:"${value}"~1`)
-    //             const subquery = subconditions.join(' OR ')
-    //             conditions.push(subquery)
-    //         }
-    //         const query = conditions.map((x) => `(${x})`).join(' AND ')
-    //         const api = new SearchApi(this.config)
-    //         const search: Search = {
-    //             indices: ['identities'],
-    //             query: {
-    //                 query,
-    //             },
-    //             sort: ['-name'],
-    //             includeNested: false,
-    //         }
-
-    //         const response = await Paginator.paginateSearchApi(api, search, undefined, this.batchSize)
-    //         return response.data
-    //     } else {
-    //         return []
-    //     }
-    // }
+        return response.data.length > 0 ? response.data[0] : undefined
+    }
 
     async listWorkgroups(): Promise<WorkgroupDtoBeta[]> {
         const api = new GovernanceGroupsBetaApi(this.config)
@@ -336,10 +282,18 @@ export class SDKClient {
         return response.data
     }
 
+    async getSource(id: string) {
+        const api = new SourcesApi(this.config)
+
+        const response = await api.getSource({ id })
+
+        return response.data
+    }
+
     async listSourceSchemas(sourceId: string) {
         const api = new SourcesApi(this.config)
 
-        const response = await api.listSourceSchemas({ sourceId })
+        const response = await api.getSourceSchemas({ sourceId })
 
         return response.data
     }
@@ -384,14 +338,14 @@ export class SDKClient {
 
     async correlateAccount(identityId: string, id: string): Promise<object> {
         const api = new AccountsApi(this.config)
-        const jsonPatchOperation: JsonPatchOperation[] = [
+        const requestBody: JsonPatchOperation[] = [
             {
                 op: 'replace',
                 path: '/identityId',
                 value: identityId,
             },
         ]
-        const response = await api.updateAccount({ id, jsonPatchOperation })
+        const response = await api.updateAccount({ id, requestBody })
 
         return response.data
     }
@@ -400,7 +354,7 @@ export class SDKClient {
         const api = new CustomFormsBetaApi(this.config)
 
         const response = await api.createFormDefinition({
-            body: form,
+            createFormDefinitionRequestBeta: form,
         })
 
         return response.data
@@ -475,6 +429,7 @@ export class SDKClient {
             id,
             testWorkflowRequestBeta,
         })
+        console.log(`workflow sent. Response code ${response.status}`)
     }
 
     async triggerWorkflowExternal(
@@ -494,10 +449,7 @@ export class SDKClient {
 
         const filters = `source.id eq "${id}"`
 
-        const search = async (
-            requestParameters?: AccountsApiListAccountsRequest | undefined,
-            axiosOptions?: AxiosRequestConfig<any> | undefined
-        ) => {
+        const search = async (requestParameters?: AccountsApiListAccountsRequest | undefined) => {
             return await api.listEntitlements({ ...requestParameters, filters })
         }
 
@@ -506,7 +458,7 @@ export class SDKClient {
         return response.data
     }
 
-    async getTransformByName(name: string): Promise<Transform | undefined> {
+    async getTransformByName(name: string): Promise<TransformRead | undefined> {
         const api = new TransformsApi(this.config)
 
         const response = await api.listTransforms()
@@ -514,18 +466,82 @@ export class SDKClient {
         return response.data.find((x) => x.name === name)
     }
 
-    async testTransform(
-        identityId: string,
-        identityAttributeConfig: IdentityAttributeConfigBeta
-    ): Promise<string | undefined> {
-        const api = new IdentityProfilesBetaApi(this.config)
+    async updateTransform(transform: Transform, id: string): Promise<Transform> {
+        const api = new TransformsApi(this.config)
+        const response = await api.updateTransform({ id: id, transform })
+        return response.data
+    }
 
-        const response = await api.generateIdentityPreview({
-            identityPreviewRequestBeta: { identityId, identityAttributeConfig },
-        })
-        const attributes = response.data.previewAttributes
-        const testAttribute = attributes?.find((x) => x.name === 'uid')
+    // async testTransform(
+    //     identityId: string,
+    //     identityAttributeConfig: IdentityAttributeConfigBeta
+    // ): Promise<string | undefined> {
+    //     const api = new IdentityProfilesBetaApi(this.config)
 
-        return testAttribute && testAttribute.value ? testAttribute.value.toString() : undefined
+    //     const response = await api.showGenerateIdentityPreview({
+    //         identityPreviewRequestBeta: { identityId, identityAttributeConfig },
+    //     })
+    //     const attributes = response.data.previewAttributes
+    //     const testAttribute = attributes?.find((x) => x.name === 'uid')
+
+    //     return testAttribute && testAttribute.value ? testAttribute.value.toString() : undefined
+    // }
+
+    async getLatestAccountAggregation(sourceName: string): Promise<SearchDocument | undefined> {
+        const api = new SearchApi(this.config)
+
+        const search: Search = {
+            indices: ['events'],
+            query: {
+                query: `operation:AGGREGATE AND status:PASSED AND objects:ACCOUNT AND target.name.exact:"${sourceName} [source]"`,
+            },
+            sort: ['-created'],
+        }
+        const response = await api.searchPost({ search, limit: 1 })
+
+        return response.data.length === 0 ? undefined : response.data[0]
+    }
+
+    async aggregateAccounts(id: string): Promise<void> {
+        const sourceApi = new SourcesBetaApi(this.config)
+
+        const response = await sourceApi.importAccounts({ id })
+        const taskApi = new TaskManagementBetaApi(this.config)
+
+        let count = TASKRESULTRETRIES
+        while (--count > 0) {
+            const result = await taskApi.getTaskStatus({ id: response.data.task!.id! })
+            if (result.data.completed) {
+                break
+            } else {
+                await sleep(TASKRESULTWAIT)
+            }
+        }
+    }
+
+    async getProvisioningPolicy(sourceId: string, usageType: UsageType) {
+        const api = new SourcesApi(this.config)
+
+        const requestParameters: SourcesApiGetProvisioningPolicyRequest = {
+            sourceId,
+            usageType,
+        }
+
+        const response = await api.getProvisioningPolicy(requestParameters)
+
+        return response.data
+    }
+
+    async createProvisioningPolicy(sourceId: string, provisioningPolicyDto: ProvisioningPolicyDto) {
+        const api = new SourcesApi(this.config)
+
+        const requestParameters: SourcesApiCreateProvisioningPolicyRequest = {
+            sourceId,
+            provisioningPolicyDto,
+        }
+
+        const response = await api.createProvisioningPolicy(requestParameters)
+
+        return response.data
     }
 }

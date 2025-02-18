@@ -1,0 +1,23 @@
+employeeNumber,name,firstname,lastname,displayName,email,status,title,country,department,region
+40,Christina.Long,Christina,Long,Christina Long,Christina.Long@e522.site,active,Benefits Coordinator,US,Human Resources,Northeast
+41,Sam.Marshall,Sam,Marshall,Sam Marshall,Sam.Marshall@e522.site,active,Program Coordinator,US,Human Resources,Northeast
+42,Kevin.Mcdonald,Kevin,Mc Donald,Kevin Mc Donald,Kevin.Mcdonald@e522.site,inactive,Director of Administration,US,Administration,Northeast
+43,Keith.Murray,Keith,Murray,Keith Murray,Keith.Murray@e522.site,active,Admin Assistant,US,Administration,Northeast
+44,Peter.Crocket,Peter,Crocket,Peter Crocket,Peter.Crocket@e522.site,active,Admin Assistant,US,Administration,Northeast
+46,Theresa.Cole,Theresa,Cole,Theresa Cole,Theresa.Cole@e522.site,inactive,Manager,US,Admissions,Northeast
+75,Pedro.Fernandez,Pedro,Fernandez,Pedro Fernandez,Pedro.Fernandez@e522.site,active,Sales Exec,US,Sales,Central
+48,Peter.Hamilton,Peter,Hamilton,Peter Hamilton,Peter.Hamilton@e522.site,active,Admin Assistant,US,Admissions,Northeast
+49,Catherine.Oconnor,Catherine,O'Connor,Catherine O'Connor,Catherine.OConnor@e522.site,inactive,Manager,US,Admissions,Northeast
+50,Rufus.Reynolds,Rufus,Reynolds,Rufus Reynolds,Rufus.Reynolds@e522.site,active,Admin Assistant,US,Admissions,Northeast
+51,Johnny.West,Johnny,West,Johnny West,Johnny.West@e522.site,active,Sales Representative,US,Sales,Central
+52,Petra.Wood,Petra,Wood,Petra Wood,Petra.Wood@e522.site,inactive,Councel,US,Legal,Northeast
+53,Peter.Woods,Peter,Woods,Peter Woods,Peter.Woods@e522.site,active,Admin Assistant,US,Admissions,Northeast
+54,Todd.Foster,Todd,Foster,Todd Foster,Todd.Foster@e522.site,inactive,Unix Administrator,US,Information Technology,Northeast
+55,Julia.Snaider,Julia,Snaider,Julia Snaider,Julia.Snaider@e522.site,active,CISO,US,Information Technology,Northeast
+56,Walter.Watkins,Walter,Watkins,Walter Watkins,Walter.Watkins@e522.site,inactive,CIO,US,Information Technology,Northeast
+57,Katie.Murray,Katie,Murray,Katie Murray,Katie.Murray@e522.site,active,Inventory Analyst I,US,Inventory,Northeast
+58,Anne.Hudson,Anne,Hudson,Anne Hudson,Anne.Hudson@e522.site,inactive,Admin Assistant,US,Administration,Northeast
+59,Carlos.Martínez,Carlos,Martínez,Carlos Martínez,Carlos.Martínez@e522.site,active,Admin Assistant II,US,Administration,Northeast
+60,Karlos.Martínez,Karlos,Martínez,Karlos Martínez,Karlos.Martínez@e522.site,active,Admin Assistant,US,Administration,Northeast
+61,Pedro.Wood,Pedro,Wood,Pedro Wood,Pedro.Wood@e522.site,inactive,Admin Assistant,US,Legal,Northeast
+62,Pedro.Woods,Pedro,Woods,Pedro Woods,Pedro.Woods@e522.site,inactive,Admin Assistant,US,Legal,Northeast

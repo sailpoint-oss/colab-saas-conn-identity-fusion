@@ -9,10 +9,12 @@ import {
     IdentityDocument,
     SourceOwner,
 } from 'sailpoint-api-client'
+import { capitalizeFirstLetter } from '../utils'
+import { UniqueAccount } from './account'
 
-const buildID = (entity: any, attribute: string): string => {
+export const buildID = (entity: any, attribute: string): string => {
     let name
-    if (typeof entity === 'string') {
+    if (typeof entity === 'string' || typeof entity === 'number') {
         name = entity
     } else {
         name = entity.id
@@ -40,7 +42,8 @@ const buildFormDefinitionInput = (name: string, description?: any): FormDefiniti
     return input
 }
 
-const buildFormDefinitionTextElement = (key: string, label: any): FormElementBeta => {
+const buildFormDefinitionTextElement = (key: string, name: string): FormElementBeta => {
+    const label = capitalizeFirstLetter(name) as any
     const element: FormElementBeta = {
         id: key,
         key,
@@ -80,7 +83,28 @@ const buildFormDefinitionSelectElement = (key: string, label: any, options: Opti
     return element
 }
 
-const buildTopSection = (label: string, description: string, attributes?: string[]): FormElementBeta => {
+const buildEditTopSection = (label: string, description: string, attributes?: string[]): FormElementBeta => {
+    let formElements: any[] = []
+    let count = 0
+    if (attributes) {
+        formElements = attributes.map((x) => buildFormDefinitionTextElement(buildID(++count, x), x))
+    }
+    return {
+        id: 'topSection',
+        key: 'topSection',
+        elementType: 'SECTION',
+        config: {
+            alignment: 'CENTER' as any,
+            description: description as any,
+            label: label as any,
+            labelStyle: 'h2' as any,
+            showLabel: true as any,
+            formElements,
+        },
+    }
+}
+
+const buildUniqueTopSection = (label: string, description: string, attributes?: string[]): FormElementBeta => {
     let formElements: any[] = []
     if (attributes) {
         formElements = attributes.map((x) => buildFormDefinitionTextElement(x, x))
@@ -100,11 +124,19 @@ const buildTopSection = (label: string, description: string, attributes?: string
     }
 }
 
-const buildSelectionSection = (identity: IdentityDocument, attributes?: string[]): FormElementBeta => {
+const buildSelectionSection = (
+    identity: IdentityDocument,
+    score?: Map<string, string>,
+    attributes?: string[]
+): FormElementBeta => {
     const id = buildID(identity, 'selectionSection')
     let formElements: any[] = []
     if (attributes) {
         formElements = attributes.map((x) => buildFormDefinitionTextElement(buildID(identity, x), x))
+        if (score) {
+            const scoreElement = buildScoreSection(identity.id, [...score.keys()])
+            formElements.push(scoreElement)
+        }
     }
     return {
         id,
@@ -135,8 +167,31 @@ const buildIdentitiesSection = (options: Option[]): FormElementBeta => {
     }
 }
 
-const buildOptions = (targets: IdentityDocument[], label: string, value: string): Option[] => {
-    const options: Option[] = targets.map((x) => ({
+const buildScoreSection = (id: string, scoreAttributes: string[]): FormElementBeta => {
+    const scoreElements = scoreAttributes.map((x) =>
+        buildFormDefinitionTextElement(buildID(id, `${x}.score`), `${x} score`)
+    )
+    const thresholdElements = scoreAttributes.map((x) =>
+        buildFormDefinitionTextElement(buildID(id, `${x}.threshold`), `${x} threshold`)
+    )
+
+    return {
+        id: `${id}.scoreSection`,
+        key: `${id}.scoreSection`,
+        elementType: 'COLUMN_SET' as any,
+        config: {
+            columnCount: 2 as any,
+            columns: [scoreElements, thresholdElements],
+            alignment: 'CENTER' as any,
+            label: 'Score' as any,
+            labelStyle: 'h5' as any,
+            showLabel: true as any,
+        },
+    }
+}
+
+const buildOptions = (identities: IdentityDocument[], label: string, value: string): Option[] => {
+    const options: Option[] = identities.map((x) => ({
         label: x.attributes!.uid!,
         value: x.attributes!.uid!,
     }))
@@ -147,7 +202,7 @@ const buildOptions = (targets: IdentityDocument[], label: string, value: string)
 
 const buildUniqueFormConditions = (
     attributes: string[],
-    targets: IdentityDocument[],
+    targets: { identity: IdentityDocument; score: Map<string, string> }[],
     value: string
 ): FormConditionBeta[] => {
     const formConditions: FormConditionBeta[] = [
@@ -169,10 +224,10 @@ const buildUniqueFormConditions = (
                     value: null as any,
                 },
             ],
-            effects: targets.map((x) => ({
+            effects: targets.map(({ identity }) => ({
                 effectType: 'HIDE',
                 config: {
-                    element: buildID(x, 'selectionSection') as any,
+                    element: buildID(identity, 'selectionSection') as any,
                 },
             })),
         },
@@ -189,10 +244,10 @@ const buildUniqueFormConditions = (
             ],
             effects: attributes
                 .map((x) =>
-                    targets.map((y) => ({
+                    targets.map(({ identity }) => ({
                         effectType: 'DISABLE',
                         config: {
-                            element: buildID(y, x),
+                            element: buildID(identity, x),
                         },
                     }))
                 )
@@ -221,7 +276,7 @@ const buildUniqueFormConditions = (
                     },
                 },
                 {
-                    effectType: 'DISABLE',
+                    effectType: 'ENABLE',
                     config: {
                         element: attribute as any,
                     },
@@ -231,9 +286,10 @@ const buildUniqueFormConditions = (
     }
 
     for (const target of targets) {
-        const attrs = attributes.filter((x) => x in target.attributes!)
+        const { identity, score } = target
+        const attrs = attributes.filter((x) => x in identity.attributes!)
         for (const attr of attrs) {
-            const id = buildID(target, attr)
+            const id = buildID(identity, attr)
             formConditions.push({
                 ruleOperator: 'AND',
                 rules: [
@@ -256,9 +312,43 @@ const buildUniqueFormConditions = (
                 ],
             })
         }
+
+        for (const attr of score.keys()) {
+            for (const metric of ['score', 'threshold']) {
+                const id = buildID(identity, `${attr}.${metric}`)
+                formConditions.push({
+                    ruleOperator: 'AND',
+                    rules: [
+                        {
+                            sourceType: 'INPUT',
+                            source: id,
+                            operator: 'NOT_EM',
+                            valueType: 'STRING',
+                            value: null as any,
+                        },
+                    ],
+                    effects: [
+                        {
+                            effectType: 'SET_DEFAULT_VALUE',
+                            config: {
+                                defaultValueLabel: id as any,
+                                element: id as any,
+                            },
+                        },
+                        {
+                            effectType: 'DISABLE',
+                            config: {
+                                element: id as any,
+                            },
+                        },
+                    ],
+                })
+            }
+        }
     }
 
     for (const target of targets) {
+        const { identity } = target
         formConditions.push({
             ruleOperator: 'AND',
             rules: [
@@ -267,14 +357,14 @@ const buildUniqueFormConditions = (
                     source: 'identities',
                     operator: 'EQ',
                     valueType: 'STRING',
-                    value: target.attributes!.uid! as any,
+                    value: identity.attributes!.uid! as any,
                 },
             ],
             effects: [
                 {
                     effectType: 'SHOW',
                     config: {
-                        element: buildID(target, 'selectionSection') as any,
+                        element: buildID(identity, 'selectionSection') as any,
                     },
                 },
             ],
@@ -296,44 +386,130 @@ export class UniqueForm implements CreateFormDefinitionRequestBeta {
         name: string,
         owner: SourceOwner,
         account: Account,
-        targets: { identity: IdentityDocument; score: string }[],
-        attributes: string[]
+        targets: { identity: IdentityDocument; score: Map<string, string> }[],
+        attributes: string[],
+        getScore: (attribute?: string) => number
     ) {
         this.name = name
         this.owner = owner
         this.formInput = []
-        const formAttributes = [...attributes, 'score']
-        const identities: IdentityDocument[] = []
 
-        for (const target of targets) {
-            const identity = { ...target.identity }
-            identity.attributes!.score = target.score
-            identities.push(identity)
-        }
+        // for (const attribute of attributes) {
+        //     for (const { identity, score } of targets) {
+        //         let name = buildID(identity, attribute)
+        //         this.formInput.push(buildFormDefinitionInput(name, identity.attributes![attribute]))
 
-        for (const attribute of formAttributes) {
-            for (const identity of identities) {
+        //         name = buildID(identity, `${attribute}.score`)
+        //         this.formInput.push(buildFormDefinitionInput(name, score.get(attribute)))
+
+        //         name = buildID(identity, `${attribute}.threshold`)
+        //         this.formInput.push(buildFormDefinitionInput(name, getScore(attribute)))
+        //     }
+        //     const name = buildID(UniqueForm.NEW_IDENTITY, attribute)
+        //     this.formInput.push(buildFormDefinitionInput(name, account.attributes![attribute]))
+        // }
+
+        for (const attribute of attributes) {
+            for (const { identity } of targets) {
                 const name = buildID(identity, attribute)
                 this.formInput.push(buildFormDefinitionInput(name, identity.attributes![attribute]))
             }
             const name = buildID(UniqueForm.NEW_IDENTITY, attribute)
-            this.formInput.push(buildFormDefinitionInput(name, account.attributes[attribute]))
+            this.formInput.push(buildFormDefinitionInput(name, account.attributes![attribute]))
+        }
+
+        for (const { identity, score } of targets) {
+            for (const attribute of score.keys()) {
+                let name = buildID(identity, `${attribute}.score`)
+                this.formInput.push(buildFormDefinitionInput(name, score.get(attribute)))
+
+                name = buildID(identity, `${attribute}.threshold`)
+                this.formInput.push(buildFormDefinitionInput(name, getScore(attribute)))
+            }
         }
 
         this.formInput.push(buildFormDefinitionInput('name', account.nativeIdentity))
         this.formInput.push(buildFormDefinitionInput('account', account.id))
         this.formInput.push(buildFormDefinitionInput('source', account.sourceName))
-        const options = buildOptions(identities, 'This is a new identity', 'This is a new identity')
-        const label = `Potential Identity Merge from source ${account.sourceName}`
+        const options = buildOptions(
+            targets.map((x) => x.identity),
+            'This is a new identity',
+            'This is a new identity'
+        )
+        const label = `Potential Identity Merge from ${account.sourceName}`
         const description =
             'Potentially duplicated identity was found. Please review the list of possible matches from existing identities and select the right one.'
-        const topSection = buildTopSection(label, description, attributes)
+        const topSection = buildUniqueTopSection(label, description, attributes)
         const identitiesSection = buildIdentitiesSection(options)
         this.formElements = [topSection, identitiesSection]
-        for (const identity of identities) {
-            const section = buildSelectionSection(identity, formAttributes)
+        for (const { identity, score } of targets) {
+            const section = buildSelectionSection(identity, score, attributes)
             this.formElements.push(section)
         }
-        this.formConditions = buildUniqueFormConditions(formAttributes, identities, UniqueForm.NEW_IDENTITY)
+        this.formConditions = buildUniqueFormConditions(attributes, targets, UniqueForm.NEW_IDENTITY)
+    }
+}
+
+const buildEditFormConditions = (attributes: string[], id: string): FormConditionBeta[] => {
+    const formConditions: FormConditionBeta[] = []
+
+    let count = 0
+    for (const attribute of attributes) {
+        const element = buildID(++count, attribute)
+        formConditions.push({
+            ruleOperator: 'AND',
+            rules: [
+                {
+                    sourceType: 'INPUT',
+                    source: element,
+                    operator: 'NOT_EM',
+                    valueType: 'STRING',
+                    value: null as any,
+                },
+            ],
+            effects: [
+                {
+                    effectType: 'SET_DEFAULT_VALUE',
+                    config: {
+                        defaultValueLabel: element as any,
+                        element: element as any,
+                    },
+                },
+            ],
+        })
+    }
+
+    return formConditions
+}
+
+export class EditForm implements CreateFormDefinitionRequestBeta {
+    name: string
+    formInput: FormDefinitionInputBeta[] | undefined
+    formElements: FormElementBeta[] | undefined
+    formConditions: FormConditionBeta[] | undefined
+    owner: FormOwnerBeta
+
+    constructor(name: string, owner: SourceOwner, account: UniqueAccount, attributes: string[]) {
+        this.name = name
+        this.owner = owner
+        this.formInput = []
+        const accountName = account.attributes.uniqueID as string
+
+        let count = 0
+        const fields = attributes.sort()
+        for (const field of fields) {
+            const name = buildID(++count, field)
+            this.formInput.push(buildFormDefinitionInput(name, account.attributes![field]))
+        }
+
+        this.formInput.push(buildFormDefinitionInput('account.name', accountName))
+        this.formInput.push(buildFormDefinitionInput('account.id', account.identity))
+
+        const label = `${accountName} account edit`
+        const description =
+            'These changes will be processed by the next account aggregation after submission. Changes will be persisted until a new source account is manually assigned or account is unedited.'
+        const topSection = buildEditTopSection(label, description, fields)
+        this.formElements = [topSection]
+        this.formConditions = buildEditFormConditions(fields, account.identity!)
     }
 }

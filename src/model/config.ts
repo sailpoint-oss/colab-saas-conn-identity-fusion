@@ -1,3 +1,5 @@
+import { SourceManagementWorkgroup } from 'sailpoint-api-client'
+
 export interface Config {
     attributeMerge: 'multi' | 'concatenate' | 'first'
     baseurl: string
@@ -16,7 +18,9 @@ export interface Config {
     healthy: boolean
     idnProxyType: string
     invocationId: string
-    managementWorkgroup: string | null
+    managementWorkgroup: SourceManagementWorkgroup | null
+    merging_isEnabled: boolean
+    global_merging_identical: boolean
     merging_attributes: string[]
     merging_expirationDays: number
     merging_map: {
@@ -24,10 +28,11 @@ export interface Config {
         identity: string
         uidOnly: boolean
         attributeMerge?: 'multi' | 'concatenate' | 'first' | 'source'
-        source: string | undefined
+        source?: string
+        merging_score?: number
     }[]
-    merging_reviewer: string | undefined
-    merging_score: number
+    global_merging_score: boolean
+    merging_score?: number
     since: string
     sourceDescription: string
     sources: string[]
@@ -44,5 +49,6 @@ export interface Config {
     uid_template: string
     version: number
     reset: boolean
-    includeExisting: boolean
+    forceAggregation: boolean
+    getScore: (attribute?: string) => number
 }

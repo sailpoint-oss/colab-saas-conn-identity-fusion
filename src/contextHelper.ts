@@ -9,7 +9,6 @@ import {
     OwnerDto,
     Schema,
     Source,
-    Transform,
     WorkflowBeta,
 } from 'sailpoint-api-client'
 import { Config } from './model/config'
@@ -26,7 +25,6 @@ import {
     attrConcat,
     attrSplit,
     buildAccountAttributesObject,
-    buildIdentityAttributesObject,
     composeErrorMessage,
     datedMessage,
     getExpirationDate,
@@ -38,7 +36,14 @@ import {
     stringifyIdentity,
     stringifyScore,
 } from './utils'
-import { EDITFORMNAME, NONAGGREGABLE_TYPES, TRANSFORM_NAME, UNIQUEFORMNAME, WORKFLOW_NAME, reservedAttributes } from './constants'
+import {
+    EDITFORMNAME,
+    NONAGGREGABLE_TYPES,
+    TRANSFORM_NAME,
+    UNIQUEFORMNAME,
+    WORKFLOW_NAME,
+    reservedAttributes,
+} from './constants'
 import { EditForm, UniqueForm } from './model/form'
 import { buildUniqueID } from './utils/unique'
 import { ReviewEmail, ErrorEmail, ReportEmail } from './model/email'
@@ -163,7 +168,7 @@ export class ContextHelper {
         const wfName = `${WORKFLOW_NAME} (${this.config!.cloudDisplayName})`
         this.emailer = await this.getEmailWorkflow(wfName, owner)
 
-        const accountIdentites = await  this.getSourceIdentityAttributes()
+        const accountIdentites = await this.getSourceIdentityAttributes()
         const transformName = `${TRANSFORM_NAME} (${this.config!.cloudDisplayName})`
         await this.createTransform(transformName, accountIdentites)
 
@@ -439,69 +444,77 @@ export class ContextHelper {
         await this.client.correlateAccount(identityId, accountId)
     }
 
+    private async getSourceAccount(id: string): Promise<Account | undefined> {
+        if (this.initiated === 'lazy') {
+            const account = await this.client.getAccount(id)
+            if (account && this.config.sources.includes(account.sourceName)) {
+                return account
+            }
+        } else {
+            return this.authoritativeAccounts.find((x) => x.id === id)
+        }
+    }
+
     async refreshUniqueAccount(account: Account): Promise<UniqueAccount> {
         const c = 'refreshUniqueAccount'
 
         const sourceAccounts = await this.listSourceAccounts(account)
         let needsRefresh = false
 
-        if (account.uncorrelated) {
-            logger.debug(lm(`New account. Needs to be enabled.`, c, 2))
-            needsRefresh = true
-        } else {
-            logger.debug(lm(`Existing account. Enforcing defined correlation.`, c, 1))
-            const identity = await this.getAccountIdentity(account)
+        logger.debug(lm(`Existing account. Enforcing defined correlation.`, c, 1))
+        const identity = await this.getAccountIdentity(account)
 
-            let accountIds: string[] = []
-            if (identity) {
-                const accounts = identity.accounts!
-                accountIds = accounts.filter((x) => this.config.sources.includes(x.source!.name!)).map((x) => x.id!)
-                const maxIds = Math.max(accountIds.length, account.attributes!.accounts.length)
-                const diffIds = new Set(accountIds.concat(account.attributes!.accounts ?? []))
+        let accountIds: string[] = []
+        if (identity) {
+            const accounts = identity.accounts!
+            const sourceAccounts = accounts.filter((x) => this.config.sources.includes(x.source!.name!))
+            accountIds = sourceAccounts.map((x) => x.id!)
+            const maxIds = Math.max(accountIds.length, account.attributes!.accounts.length)
+            const diffIds = new Set(accountIds.concat(account.attributes!.accounts ?? []))
 
-                if (maxIds < diffIds.size) {
-                    needsRefresh = true
-                    const isEdited = account.attributes!.statuses.includes('edited')
-                    if (isEdited) {
-                        deleteArrayItem(account.attributes!.statuses, 'edited')
-                        const message = datedMessage(`Automatically unedited by change in contributing accounts`)
-                        account.attributes!.history.push(message)
-                    }
+            if (maxIds < diffIds.size) {
+                needsRefresh = true
+                const isEdited = account.attributes!.statuses.includes('edited')
+                if (isEdited) {
+                    deleteArrayItem(account.attributes!.statuses, 'edited')
+                    const message = datedMessage(`Automatically unedited by change in contributing accounts`)
+                    account.attributes!.history.push(message)
                 }
-            } else {
-                needsRefresh = false
             }
+        } else {
+            needsRefresh = false
+        }
 
-            for (const acc of account.attributes!.accounts as string[]) {
-                try {
-                    if (
-                        !accountIds.includes(acc) &&
-                        (this.initiated === 'lazy' || this.authoritativeAccounts.find((x) => x.id === acc))
-                    ) {
+        for (const acc of account.attributes!.accounts as string[]) {
+            try {
+                if (!accountIds.includes(acc)) {
+                    const sourceAccount = await this.getSourceAccount(acc)
+                    if (sourceAccount && sourceAccount.uncorrelated) {
                         logger.debug(lm(`Correlating ${acc} account with ${account.identity?.name}.`, c, 1))
                         const response = await this.client.correlateAccount(account.identityId! as string, acc)
+                        sourceAccounts.push(sourceAccount)
                         accountIds.push(acc)
                     }
-                } catch (e) {
-                    logger.error(lm(`Failed to correlate ${acc} account with ${account.identity?.name}.`, c, 1))
                 }
+            } catch (e) {
+                logger.error(lm(`Failed to correlate ${acc} account with ${account.identity?.name}.`, c, 1))
             }
-            account.attributes!.accounts = accountIds
+        }
+        account.attributes!.accounts = accountIds
 
-            if (account.attributes!.accounts.length === 0) {
-                needsRefresh = false
-            } else if (
-                !needsRefresh ||
-                !account.attributes!.statuses.some((x: string) => ['edited', 'orphan'].includes(x))
-            ) {
-                const lastConfigChange = new Date(this.source!.modified!).getTime()
-                const lastModified = new Date(account.modified!).getTime()
-                if (lastModified < lastConfigChange) {
-                    needsRefresh = true
-                } else {
-                    const newSourceData = sourceAccounts.find((x) => new Date(x.modified!).getTime() > lastModified)
-                    needsRefresh = newSourceData ? true : false
-                }
+        if (account.attributes!.accounts.length === 0) {
+            needsRefresh = false
+        } else if (
+            !needsRefresh ||
+            !account.attributes!.statuses.some((x: string) => ['edited', 'orphan'].includes(x))
+        ) {
+            const lastConfigChange = new Date(this.source!.modified!).getTime()
+            const lastModified = new Date(account.modified!).getTime()
+            if (lastModified < lastConfigChange) {
+                needsRefresh = true
+            } else {
+                const newSourceData = sourceAccounts.find((x) => new Date(x.modified!).getTime() > lastModified)
+                needsRefresh = newSourceData ? true : false
             }
         }
 
@@ -520,9 +533,13 @@ export class ContextHelper {
         return uniqueAccount
     }
 
-    private refreshAccountAttributes(account: Account, sourceAccounts: Account[], schema: AccountSchema) {
-        if (sourceAccounts.length > 0) {
+    private refreshAccountAttributes(account: Account, accounts: Account[], schema: AccountSchema) {
+        if (accounts.length > 0) {
             const attributes: { [key: string]: any } = {}
+            let sourceAccounts: Account[] = []
+            for (const source of this.config.sources) {
+                sourceAccounts = sourceAccounts.concat(accounts.filter((x) => x.sourceName === source))
+            }
 
             attributes: for (const attrDef of schema.attributes) {
                 if (!reservedAttributes.includes(attrDef.name)) {
@@ -553,38 +570,43 @@ export class ContextHelper {
                         }
 
                         if (values.length > 0) {
-                            values = values.map((x) => attrSplit(x))
+                            values = values
+                                .map((x) => attrSplit(x))
+                                .flat()
+                                .flat()
 
                             if (['multi', 'concatenate'].includes(attributeMerge)) {
-                                multiValue = multiValue.concat(values).flat()
+                                multiValue = multiValue.concat(values)
                             }
                             values: for (const value of values) {
-                                switch (attributeMerge) {
-                                    case 'first':
-                                        if (firstSource) {
-                                            if (value.length === 1) {
-                                                attributes![attrDef.name] = value[0]
-                                            } else {
-                                                attributes![attrDef.name] = value
+                                if (value) {
+                                    switch (attributeMerge) {
+                                        case 'first':
+                                            if (firstSource) {
+                                                if (value.length === 1) {
+                                                    attributes![attrDef.name] = value[0]
+                                                } else {
+                                                    attributes![attrDef.name] = value
+                                                }
+                                                firstSource = false
+                                                break accounts
                                             }
-                                            firstSource = false
-                                            break accounts
-                                        }
-                                        break
+                                            break
 
-                                    case 'source':
-                                        const source = attrConf?.source
-                                        if (sourceAccount.sourceName === source) {
-                                            if (value.length === 1) {
-                                                attributes![attrDef.name] = value[0]
-                                            } else {
-                                                attributes![attrDef.name] = value
+                                        case 'source':
+                                            const source = attrConf?.source
+                                            if (sourceAccount.sourceName === source) {
+                                                if (value.length === 1) {
+                                                    attributes![attrDef.name] = value[0]
+                                                } else {
+                                                    attributes![attrDef.name] = value
+                                                }
+                                                break accounts
                                             }
-                                            break accounts
-                                        }
-                                        break
-                                    default:
-                                        break
+                                            break
+                                        default:
+                                            break
+                                    }
                                 }
                             }
                         }
@@ -607,7 +629,7 @@ export class ContextHelper {
                 }
             }
 
-            attributes.sources = sourceAccounts.map((x) => `[${x.sourceName}]`).join(' ')
+            attributes.sources = [...new Set(sourceAccounts)].map((x) => `[${x.sourceName}]`).join(' ')
             account.attributes = attributes
         }
     }
@@ -633,7 +655,7 @@ export class ContextHelper {
         const uniqueAccount = account
 
         uniqueAccount.attributes!.accounts = [account.id]
-        if (status === 'reviewer' || !status) {
+        if (status === 'requested' || !status) {
             logger.debug(lm(`Taking identity uid as unique ID`, c, 1))
             const identity = this.identitiesById.get(account.identityId!)!
             uniqueID = identity.attributes!.uid
@@ -663,20 +685,25 @@ export class ContextHelper {
         return uniqueAccount
     }
 
-    async createUniqueAccount(uniqueID: string, action: string): Promise<Account> {
+    async createUniqueAccount(uniqueID: string, status: string): Promise<Account> {
         const identity = (await this.getIdentityByUID(uniqueID)) as IdentityDocument
         const originAccount = (await this.getAccountByIdentity(identity)) as Account
         originAccount.attributes = { ...originAccount.attributes, ...identity.attributes }
         const message = 'Created from access request'
-        const uniqueAccount = await this.buildUniqueAccount(originAccount, action, message)
+        const uniqueAccount = await this.buildUniqueAccount(originAccount, status, message)
 
         this.setUUID(uniqueAccount)
 
         return uniqueAccount
     }
 
-    getSourceNameByID(id: string): string {
-        const source = this.sources.find((x) => x.id === id)
+    async getSourceNameByID(id: string): Promise<string> {
+        let source
+        if (this.initiated === 'full') {
+            source = this.sources.find((x) => x.id === id)
+        } else {
+            source = await this.client.getSource(id)
+        }
 
         return source?.name ? source.name : ''
     }
@@ -1071,36 +1098,35 @@ export class ContextHelper {
         return workflow
     }
 
-    private async createTransform(name: string,  sourceIdentityAttribute: SourceIdentityAttribute[] ): Promise<boolean> {
-        
+    private async createTransform(name: string, sourceIdentityAttribute: SourceIdentityAttribute[]): Promise<boolean> {
         const oldTransform = await this.client.getTransformByName(name)
 
         const attributeValues: any = []
         for (const sourceIdentity of sourceIdentityAttribute) {
             attributeValues.push({
-                "type": "accountAttribute",
-                "attributes": {
-                    "sourceName": sourceIdentity.sourceName,
-                    "attributeName": sourceIdentity.identityAttribute
-                }
+                type: 'accountAttribute',
+                attributes: {
+                    sourceName: sourceIdentity.sourceName,
+                    attributeName: sourceIdentity.identityAttribute,
+                },
             })
         }
-        attributeValues.push("false")
-        
+        attributeValues.push('false')
+
         const transformDef: any = {
-            "name": name,
-            "type": "static",
-            "attributes": {
-                "value": "#if($processed == 'false')staging#{else}active#end",
-                "processed": {
-                    "type": "firstValid",
-                    "attributes": {
-                        "values": attributeValues,
-                        "ignoreErrors": true
-                    }
-                }
+            name: name,
+            type: 'static',
+            attributes: {
+                value: "#if($processed == 'false')staging#{else}active#end",
+                processed: {
+                    type: 'firstValid',
+                    attributes: {
+                        values: attributeValues,
+                        ignoreErrors: true,
+                    },
+                },
             },
-            "internal": false
+            internal: false,
         }
 
         try {
@@ -1114,7 +1140,6 @@ export class ContextHelper {
             return false
         }
 
-        
         return true
     }
 
@@ -1208,7 +1233,7 @@ export class ContextHelper {
             if (identityAttribute) {
                 identityAttributes.push({
                     sourceName: source.name,
-                    identityAttribute
+                    identityAttribute,
                 })
             }
         }

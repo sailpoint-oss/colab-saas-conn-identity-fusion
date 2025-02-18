@@ -17,4 +17,5 @@ export const statuses: StatusSource[] = [
         description: 'The account was manually edited and no longer gets updates from current source accounts',
     },
     { id: 'reviewer', name: 'Reviewer', description: 'An identity deduplication reviewer of any source' },
+    { id: 'requested', name: 'Requested', description: 'Account was requested' },
 ]

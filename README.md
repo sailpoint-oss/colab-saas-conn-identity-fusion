@@ -519,6 +519,9 @@ To learn more about access profiles and how to configure and manage them, refer 
 
 ### Generate deduplication report
 
+> [!IMPORTANT]  
+> Before you can generate a deduplication report, your user MUST have requested the reviewer access profile that was created above
+
 You may actually want to generate a report to detect potential duplicate accounts before you even run an aggregation. To do so, request access to the 'Fusion Report' access profile. To learn more about requesting access, refer to [Working with access requests](https://documentation.sailpoint.com/saas/user-help/requests/request_center.html). 
 
 ![Generating Report](assets/images/getting-started-12.png)

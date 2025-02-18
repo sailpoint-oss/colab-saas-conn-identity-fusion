@@ -429,6 +429,7 @@ export class SDKClient {
             id,
             testWorkflowRequestBeta,
         })
+        console.log(`workflow sent. Response code ${response.status}`)
     }
 
     async triggerWorkflowExternal(

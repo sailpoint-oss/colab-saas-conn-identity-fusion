@@ -437,96 +437,100 @@ export const connector = async () => {
 
         if (input.changes) {
             for (const change of input.changes) {
-                switch (change.attribute) {
-                    case 'actions':
-                        switch (change.value) {
-                            case 'reset':
-                                await ctx.resetUniqueID(account)
-                                message = datedMessage('UniqueID reset')
-                                const history = account.attributes!.history as string[]
-                                history.push(message)
-                                break
+                const values = [].concat(change.value)
+                for (const value of values) {
+                    switch (change.attribute) {
+                        case 'actions':
+                            switch (value) {
+                                case 'reset':
+                                    await ctx.resetUniqueID(account)
+                                    message = datedMessage('UniqueID reset')
+                                    const history = account.attributes!.history as string[]
+                                    history.push(message)
+                                    break
 
-                            case 'edit':
-                                const form = await ctx.createEditForm(account)
-                                const reviewerIDs = await ctx.listReviewerIDs()
+                                case 'edit':
+                                    const form = await ctx.createEditForm(account)
+                                    const reviewerIDs = await ctx.listReviewerIDs()
 
-                                for (const reviewerID of reviewerIDs) {
-                                    const reviewer = (await ctx.getIdentityById(reviewerID)) as IdentityDocument
-                                    let currentFormInstance = await ctx.getEditFormInstanceByReviewerID(
-                                        form,
-                                        reviewerID
-                                    )
-
-                                    if (!currentFormInstance) {
-                                        currentFormInstance = await ctx.createEditFormInstance(form, reviewerID)
-                                        logger.info(
-                                            `Form URL for ${reviewer.attributes!.uid}: ${currentFormInstance.standAloneFormUrl}`
+                                    for (const reviewerID of reviewerIDs) {
+                                        const reviewer = (await ctx.getIdentityById(reviewerID)) as IdentityDocument
+                                        let currentFormInstance = await ctx.getEditFormInstanceByReviewerID(
+                                            form,
+                                            reviewerID
                                         )
-                                        // Send notifications
-                                        logger.info(`Sending email notifications for ${form.name}`)
-                                        const email = new EditEmail(reviewer, form.name!, currentFormInstance)
-                                        await ctx.sendEmail(email)
+
+                                        if (!currentFormInstance) {
+                                            currentFormInstance = await ctx.createEditFormInstance(form, reviewerID)
+                                            logger.info(
+                                                `Form URL for ${reviewer.attributes!.uid}: ${currentFormInstance.standAloneFormUrl}`
+                                            )
+                                            // Send notifications
+                                            logger.info(`Sending email notifications for ${form.name}`)
+                                            const email = new EditEmail(reviewer, form.name!, currentFormInstance)
+                                            await ctx.sendEmail(email)
+                                        }
                                     }
-                                }
-                                break
+                                    break
 
-                            case 'unedit':
-                                const fusionAccount = (await ctx.getFusionAccount(input.identity)) as Account
-                                fusionAccount.modified = new Date(0).toISOString()
-                                deleteArrayItem(fusionAccount.attributes!.statuses as string[], 'edit')
-                                account = (await ctx.refreshUniqueAccount(fusionAccount)) as UniqueAccount
-                                break
+                                case 'unedit':
+                                    const fusionAccount = (await ctx.getFusionAccount(input.identity)) as Account
+                                    fusionAccount.modified = new Date(0).toISOString()
+                                    deleteArrayItem(fusionAccount.attributes!.statuses as string[], 'edit')
+                                    account = (await ctx.refreshUniqueAccount(fusionAccount)) as UniqueAccount
+                                    break
 
-                            case 'report':
-                                ctx.buildReport(input.identity)
-                                break
+                                case 'report':
+                                    ctx.buildReport(input.identity)
+                                    break
 
-                            default:
-                                const sourceIDs = ctx.listSources().map((x) => x.id!)
-                                const statuses = account.attributes.statuses as string[]
-                                const actions = account.attributes.actions as string[]
-                                switch (change.op) {
-                                    case AttributeChangeOp.Add:
-                                        if (!statuses.includes('reviewer')) {
-                                            statuses.push('reviewer')
-                                        }
-                                        if (sourceIDs.includes(change.value)) {
-                                            actions.push(change.value)
-                                        } else {
-                                            message = `Source ID ${change.value} is not a currently configured source.`
-                                            ctx.handleError(message)
-                                        }
-                                        break
-                                    case AttributeChangeOp.Remove:
-                                        deleteArrayItem(actions, change.value)
-                                        if (!sourceIDs.some((x) => actions.includes(x))) {
-                                            deleteArrayItem(statuses, 'reviewer')
-                                        }
-                                        break
-                                    case AttributeChangeOp.Set:
-                                        if (!statuses.includes('edited')) {
-                                            const now = new Date().toISOString().split('T')[0]
-                                            message = `[${now}] Account edited by attribute sync`
-                                            statuses.push('edited')
-                                            account.attributes[change.attribute] = change.value
-                                            const history = account.attributes!.history as string[]
-                                            history.push(message)
-                                        }
-                                        break
+                                default:
+                                    const sourceIDs = ctx.listSources().map((x) => x.id!)
+                                    const statuses = account.attributes.statuses as string[]
+                                    const actions = account.attributes.actions as string[]
+                                    switch (change.op) {
+                                        case AttributeChangeOp.Add:
+                                            if (!statuses.includes('reviewer')) {
+                                                statuses.push('reviewer')
+                                            }
+                                            if (sourceIDs.includes(value)) {
+                                                actions.push(value)
+                                            } else {
+                                                message = `Source ID ${value} is not a currently configured source.`
+                                                ctx.handleError(message)
+                                            }
+                                            break
+                                        case AttributeChangeOp.Remove:
+                                            deleteArrayItem(actions, value)
+                                            if (!sourceIDs.some((x) => actions.includes(x))) {
+                                                deleteArrayItem(statuses, 'reviewer')
+                                            }
+                                            break
+                                        case AttributeChangeOp.Set:
+                                            if (!statuses.includes('edited')) {
+                                                const now = new Date().toISOString().split('T')[0]
+                                                message = `[${now}] Account edited by attribute sync`
+                                                statuses.push('edited')
+                                                account.attributes[change.attribute] = value
+                                                const history = account.attributes!.history as string[]
+                                                history.push(message)
+                                            }
+                                            break
 
-                                    default:
-                                        break
-                                }
-                                break
-                        }
-                        break
-                    case 'statuses':
-                        message = 'Status entitlements are not designed for assigment. Use action entitlements instead.'
-                        throw new ConnectorError(message, ConnectorErrorType.Generic)
-                    default:
-                        message = 'Operation not supported.'
-                        throw new ConnectorError(message, ConnectorErrorType.Generic)
+                                        default:
+                                            break
+                                    }
+                                    break
+                            }
+                            break
+                        case 'statuses':
+                            message =
+                                'Status entitlements are not designed for assigment. Use action entitlements instead.'
+                            throw new ConnectorError(message, ConnectorErrorType.Generic)
+                        default:
+                            message = 'Operation not supported.'
+                            throw new ConnectorError(message, ConnectorErrorType.Generic)
+                    }
                 }
             }
             const statuses = account.attributes.statuses as string[]

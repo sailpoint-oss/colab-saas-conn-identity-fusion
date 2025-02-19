@@ -628,8 +628,8 @@ export class ContextHelper {
                     attributes[attrDef.name] = account.attributes![attrDef.name]
                 }
             }
-
-            attributes.sources = [...new Set(sourceAccounts)].map((x) => `[${x.sourceName}]`).join(' ')
+            const sourceNames = sourceAccounts.map((x) => `[${x.sourceName}]`)
+            attributes.sources = [...new Set(sourceNames)].join(' ')
             account.attributes = attributes
         }
     }

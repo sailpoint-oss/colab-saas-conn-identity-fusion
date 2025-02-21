@@ -9,7 +9,7 @@ export const fusionConnectorConfig = {
       "clientId": process.env.SAIL_CLIENT_ID,
       "clientSecret": process.env.SAIL_CLIENT_SECRET,
       "baseurl": process.env.SAIL_BASE_URL,
-      "spConnectorInstanceId": "d4ee30d5-07a8-474b-aa80-f2143551547f",
+      "spConnectorInstanceId": "9f6840d2-9793-4ef1-a36b-03d4893a0cd0",
       "sources": [
         "airtable-a",
         "airtable-b"

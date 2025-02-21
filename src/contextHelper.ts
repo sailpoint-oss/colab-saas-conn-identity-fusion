@@ -260,8 +260,11 @@ export class ContextHelper {
 
         const identities = await this.client.listIdentities([...attributes])
         identities.forEach((x) => {
-            this.identitiesById.set(x.id, x)
-            if (this.config.uid_scope === 'platform') this.ids.add(x.attributes!.uid)
+            // make sure attributes exists before adding to map
+            if (x.attributes) {
+                this.identitiesById.set(x.id, x)
+                if (this.config.uid_scope === 'platform') this.ids.add(x.attributes!.uid)
+            }
         })
     }
 
